@@ -252,3 +252,49 @@ def test_every_tool_that_reaches_slack_goes_through_the_client():
                     and node.value.value.id == "ctx"):
                 offenders.append(f"{name}:{node.lineno}")
     assert not offenders, f"direct ctx.http use outside the client: {offenders}"
+
+
+# --- UI component keyword arguments -----------------------------------------
+
+def test_every_ui_component_call_uses_only_real_keyword_arguments():
+    """Panels must only pass keywords the ui.* components actually accept.
+
+    The platform validator rejects a deploy for this, but the LOCAL validator
+    does not check it -- so without this test the failure is only discovered
+    after a push, one wrong keyword per round trip. Two real examples caught
+    here: ui.Empty has no `action_label`, and ui.Button takes `on_click` rather
+    than `action`.
+
+    Checking against the live signatures means the test cannot drift from the
+    SDK: it reads whatever the installed version actually accepts.
+    """
+    import inspect
+    from imperal_sdk import ui
+
+    problems = []
+    for name in ("panels.py",):
+        for node in ast.walk(_tree(name)):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            if not (isinstance(fn, ast.Attribute)
+                    and isinstance(fn.value, ast.Name)
+                    and fn.value.id == "ui"):
+                continue
+            component = getattr(ui, fn.attr, None)
+            if component is None:
+                problems.append(f"{name}:{node.lineno} ui.{fn.attr} does not exist")
+                continue
+            try:
+                sig = inspect.signature(component)
+            except (TypeError, ValueError):
+                continue
+            if any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values()):
+                continue
+            valid = set(sig.parameters)
+            for kw in node.keywords:
+                if kw.arg and kw.arg not in valid:
+                    problems.append(
+                        f"{name}:{node.lineno} ui.{fn.attr}({kw.arg}=...) "
+                        f"invalid; accepts {sorted(valid)}")
+    assert not problems, "invalid ui.* keyword arguments: " + "; ".join(problems)

@@ -200,12 +200,18 @@ def _workspaces_view(records: list[dict], load_failed: bool) -> ui.Component:
             rows=rows,
         )
     else:
-        body = ui.Empty(
-            message=("No Slack workspace is connected yet. It takes about a "
-                     "minute."),
-            action=ui.Call("__panel__slack", view="connect"),
-            action_label="Connect Slack",
-        )
+        # ui.Empty accepts only message / icon / action -- there is no
+        # action_label, so the call to action is a Button next to it rather
+        # than a label on the empty state itself.
+        body = ui.Stack(children=[
+            ui.Empty(
+                message=("No Slack workspace is connected yet. It takes about "
+                         "a minute."),
+                icon="MessageSquare",
+            ),
+            ui.Button(label="Connect Slack",
+                      on_click=ui.Call("__panel__slack", view="connect")),
+        ])
 
     children.append(ui.Section(title="Connected workspaces", children=[body]))
 

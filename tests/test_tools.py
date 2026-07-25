@@ -12,7 +12,8 @@ would cost the user:
 
 import handlers_read as hr
 import handlers_write as hw
-from conftest import (auth_test_payload, channel_payload, err,
+from conftest import (FAKE_BOT_TOKEN, FAKE_BOT_TOKEN_TWO,
+                      auth_test_payload, channel_payload, err,
                       message_payload, ok, user_payload)
 
 
@@ -21,31 +22,31 @@ from conftest import (auth_test_payload, channel_payload, err,
 async def test_connect_verifies_the_token_before_storing_it(ctx, http):
     http.push(auth_test_payload(team="Acme", user="webbee"))
     result = await hw.connect_workspace(ctx, hw.ConnectWorkspaceParams(
-        token="xoxb-good-token"))
+        token=FAKE_BOT_TOKEN_TWO))
 
     assert result.status == "success", result.error
     # auth.test came first -- the proof that it was verified, not assumed.
     assert "auth.test" in http.urls()[0]
     stored = await ctx.secrets.get("slack_tokens")
-    assert "xoxb-good-token" in stored
+    assert FAKE_BOT_TOKEN_TWO in stored
 
 
 async def test_a_rejected_token_is_never_stored(ctx, http):
     """The whole point of verify-before-store."""
     http.push(err("invalid_auth"))
     result = await hw.connect_workspace(ctx, hw.ConnectWorkspaceParams(
-        token="xoxb-bad-token"))
+        token=FAKE_BOT_TOKEN_TWO))
 
     assert result.status == "error"
     stored = await ctx.secrets.get("slack_tokens") or ""
-    assert "xoxb-bad-token" not in stored
+    assert FAKE_BOT_TOKEN_TWO not in stored
 
 
 async def test_a_rejected_token_never_appears_in_the_error(ctx, http):
     http.push(err("invalid_auth"))
     result = await hw.connect_workspace(ctx, hw.ConnectWorkspaceParams(
-        token="xoxb-secret-value"))
-    assert "xoxb-secret-value" not in (result.error or "")
+        token=FAKE_BOT_TOKEN_TWO))
+    assert FAKE_BOT_TOKEN_TWO not in (result.error or "")
 
 
 async def test_connecting_a_second_workspace_appends_rather_than_replaces(
@@ -54,11 +55,12 @@ async def test_connecting_a_second_workspace_appends_rather_than_replaces(
     http.push(auth_test_payload(team="Second", team_id="T999"))
     result = await hw.connect_workspace(connected_ctx,
                                         hw.ConnectWorkspaceParams(
-                                            token="xoxb-second-token"))
+                                            token=FAKE_BOT_TOKEN_TWO))
     assert result.status == "success"
     stored = await connected_ctx.secrets.get("slack_tokens")
-    assert "xoxb-test-token-one" in stored
-    assert "xoxb-second-token" in stored
+    # BOTH must survive: the pre-existing one and the newly added one.
+    assert FAKE_BOT_TOKEN in stored
+    assert FAKE_BOT_TOKEN_TWO in stored
 
 
 async def test_an_empty_token_is_refused_without_calling_slack(ctx, http):

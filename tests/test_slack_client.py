@@ -9,7 +9,8 @@ behaviour so that can never regress.
 import pytest
 
 import slack_client as sc
-from conftest import auth_test_payload, err, ok
+from conftest import (FAKE_BOT_TOKEN, FAKE_USER_TOKEN,
+                      auth_test_payload, err, ok)
 
 
 # --- the ok:false trap -------------------------------------------------------
@@ -17,14 +18,14 @@ from conftest import auth_test_payload, err, ok
 async def test_ok_false_on_http_200_is_a_failure(ctx, http):
     """HTTP 200 + ok:false must NOT be read as success."""
     http.push(err("channel_not_found"))
-    out = await sc.request(ctx, "GET", "conversations.info", "xoxb-t")
+    out = await sc.request(ctx, "GET", "conversations.info", FAKE_BOT_TOKEN)
     assert out["ok"] is False
     assert out["code"] == sc.SLACK_CHANNEL_NOT_FOUND
 
 
 async def test_ok_true_on_http_200_is_a_success(ctx, http):
     http.push(ok(channel={"id": "C1"}))
-    out = await sc.request(ctx, "GET", "conversations.info", "xoxb-t")
+    out = await sc.request(ctx, "GET", "conversations.info", FAKE_BOT_TOKEN)
     assert out["ok"] is True
     assert out["data"]["channel"]["id"] == "C1"
 
@@ -32,7 +33,7 @@ async def test_ok_true_on_http_200_is_a_success(ctx, http):
 async def test_a_body_without_ok_at_all_is_not_trusted(ctx, http):
     """Slack always sends `ok`. A body without it is not a Slack response."""
     http.push({"channel": {"id": "C1"}})
-    out = await sc.request(ctx, "GET", "conversations.info", "xoxb-t")
+    out = await sc.request(ctx, "GET", "conversations.info", FAKE_BOT_TOKEN)
     assert out["ok"] is False
     assert out["code"] == sc.SLACK_RESPONSE_UNEXPECTED
 
@@ -91,7 +92,7 @@ async def test_a_missing_token_never_reaches_the_network(ctx, http):
 
 
 async def test_the_token_never_appears_in_an_error(ctx, http):
-    secret = "xoxb-super-secret-value"
+    secret = FAKE_BOT_TOKEN + "-sensitive"
     http.push(err("invalid_auth"))
     out = await sc.request(ctx, "GET", "auth.test", secret)
     blob = repr(out)
@@ -101,14 +102,14 @@ async def test_the_token_never_appears_in_an_error(ctx, http):
 
 async def test_the_token_travels_in_the_authorization_header(ctx, http):
     http.push(auth_test_payload())
-    await sc.request(ctx, "GET", "auth.test", "xoxb-abc")
+    await sc.request(ctx, "GET", "auth.test", FAKE_BOT_TOKEN)
     headers = http.calls[-1]["headers"]
-    assert headers.get("Authorization") == "Bearer xoxb-abc"
+    assert headers.get("Authorization") == f"Bearer {FAKE_BOT_TOKEN}"
 
 
 def test_token_kind_is_detected_from_the_prefix():
-    assert sc.token_kind("xoxb-1-2") == "bot"
-    assert sc.token_kind("xoxp-1-2") == "user"
+    assert sc.token_kind(FAKE_BOT_TOKEN) == "bot"
+    assert sc.token_kind(FAKE_USER_TOKEN) == "user"
     assert sc.token_kind("garbage") == "unknown"
 
 
@@ -116,27 +117,27 @@ def test_token_kind_is_detected_from_the_prefix():
 
 async def test_a_timeout_is_reported_as_a_timeout(ctx, http):
     http.push(TimeoutError("timed out"))
-    out = await sc.request(ctx, "GET", "auth.test", "xoxb-t")
+    out = await sc.request(ctx, "GET", "auth.test", FAKE_BOT_TOKEN)
     assert out["code"] == "BACKEND_TIMEOUT"
     assert out["retryable"] is True
 
 
 async def test_an_unreachable_host_is_distinct_from_a_timeout(ctx, http):
     http.push(ConnectionError("nodename nor servname provided"))
-    out = await sc.request(ctx, "GET", "auth.test", "xoxb-t")
+    out = await sc.request(ctx, "GET", "auth.test", FAKE_BOT_TOKEN)
     assert out["code"] == sc.SLACK_UNREACHABLE
 
 
 async def test_a_non_json_body_is_reported_as_such(ctx, http):
     http.push("<html>maintenance</html>")
-    out = await sc.request(ctx, "GET", "auth.test", "xoxb-t")
+    out = await sc.request(ctx, "GET", "auth.test", FAKE_BOT_TOKEN)
     assert out["code"] == sc.SLACK_RESPONSE_NOT_JSON
 
 
 async def test_every_request_carries_an_explicit_timeout(ctx, http):
     """A hanging call must fail diagnosably, not wait to be cancelled."""
     http.push(auth_test_payload())
-    await sc.request(ctx, "GET", "auth.test", "xoxb-t")
+    await sc.request(ctx, "GET", "auth.test", FAKE_BOT_TOKEN)
     assert http.calls[-1]["timeout"], "no timeout was passed"
 
 
@@ -144,7 +145,7 @@ async def test_every_request_carries_an_explicit_timeout(ctx, http):
 
 async def test_retry_after_is_surfaced_when_slack_rate_limits(ctx, http):
     http.push(err("ratelimited"), status=429, headers={"Retry-After": "30"})
-    out = await sc.request(ctx, "GET", "conversations.list", "xoxb-t")
+    out = await sc.request(ctx, "GET", "conversations.list", FAKE_BOT_TOKEN)
     assert out["code"] == "RATE_LIMITED"
     assert out["retryable"] is True
     assert out.get("retry_after") == 30
@@ -157,7 +158,7 @@ async def test_pagination_follows_the_cursor(ctx, http):
                  response_metadata={"next_cursor": "abc"}))
     http.push(ok(channels=[{"id": "C2"}],
                  response_metadata={"next_cursor": ""}))
-    out = await sc.paginate(ctx, "GET", "conversations.list", "xoxb-t",
+    out = await sc.paginate(ctx, "GET", "conversations.list", FAKE_BOT_TOKEN,
                             results_key="channels")
     assert out["ok"] is True
     assert [c["id"] for c in out["results"]] == ["C1", "C2"]
@@ -167,7 +168,7 @@ async def test_pagination_follows_the_cursor(ctx, http):
 async def test_pagination_stops_at_the_limit(ctx, http):
     http.push(ok(channels=[{"id": "C1"}, {"id": "C2"}, {"id": "C3"}],
                  response_metadata={"next_cursor": "more"}))
-    out = await sc.paginate(ctx, "GET", "conversations.list", "xoxb-t",
+    out = await sc.paginate(ctx, "GET", "conversations.list", FAKE_BOT_TOKEN,
                             results_key="channels", limit=2)
     assert len(out["results"]) == 2
     assert len(http.calls) == 1, "must not fetch another page once satisfied"
@@ -177,7 +178,7 @@ async def test_pagination_reports_an_error_mid_stream(ctx, http):
     http.push(ok(channels=[{"id": "C1"}],
                  response_metadata={"next_cursor": "abc"}))
     http.push(err("ratelimited"))
-    out = await sc.paginate(ctx, "GET", "conversations.list", "xoxb-t",
+    out = await sc.paginate(ctx, "GET", "conversations.list", FAKE_BOT_TOKEN,
                             results_key="channels")
     assert out["ok"] is False
     assert out["code"] == "RATE_LIMITED"

@@ -13,6 +13,7 @@ that posts to the right action" is.
 """
 
 import panels
+from conftest import FAKE_BOT_TOKEN
 
 
 def _flatten(node) -> list:
@@ -168,5 +169,5 @@ async def test_panels_never_raise_when_the_store_is_unreadable(ctx):
 async def test_no_panel_leaks_a_token_into_its_markup(connected_ctx, http):
     from conftest import auth_test_payload
     http.push(auth_test_payload(team="Acme"))
-    assert "xoxb-test-token-one" not in _dump(
+    assert FAKE_BOT_TOKEN not in _dump(
         await panels.slack_center(connected_ctx))
