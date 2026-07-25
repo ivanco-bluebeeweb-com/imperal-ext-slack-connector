@@ -23,8 +23,15 @@ import ast
 import pathlib
 
 APP_DIR = pathlib.Path(__file__).resolve().parent.parent
-HANDLER_FILES = ["handlers_read.py", "handlers_write.py", "shared.py",
-                 "accounts.py", "slack_client.py", "panels.py"]
+
+# DISCOVERED, not listed. A hand-maintained list silently stops covering the
+# code the moment a handler file is added or renamed -- which is exactly when a
+# sweep like this matters most. Globbing means a new handler is covered the day
+# it lands.
+HANDLER_FILES = sorted(
+    p.name for p in APP_DIR.glob("handlers_*.py")
+) + ["shared.py", "accounts.py", "slack_client.py", "panels.py"]
+WRITE_FILES = sorted(p.name for p in APP_DIR.glob("handlers_*.py"))
 ALL_FILES = HANDLER_FILES + ["app.py", "models.py", "slack_objects.py",
                              "main.py"]
 
@@ -80,7 +87,7 @@ def test_the_local_error_helper_always_requires_a_code():
 def test_every_error_helper_call_passes_a_code():
     """Each _error(...) call site supplies the code argument."""
     offenders = []
-    for name in ("handlers_read.py", "handlers_write.py"):
+    for name in WRITE_FILES:
         for call in _calls(_tree(name), "_error"):
             has_positional_code = len(call.args) >= 2
             has_kw_code = any(kw.arg == "code" for kw in call.keywords)
@@ -135,7 +142,7 @@ def test_no_token_is_ever_written_to_the_store():
     A token in the store is a credential in a place that is backed up, exported
     and rendered into panels -- none of which is true of the Vault.
     """
-    for name in ("accounts.py", "handlers_write.py", "panels.py"):
+    for name in ["accounts.py", "panels.py"] + WRITE_FILES:
         tree = _tree(name)
         for call in _calls(tree, "insert", "update", "set", "put"):
             for arg in list(call.args) + [kw.value for kw in call.keywords]:
@@ -191,21 +198,21 @@ def test_every_write_declares_an_event():
     The whole point of the OS is that one app's write can trigger another's
     work; a tool that mutates Slack silently cannot participate in that.
     """
-    tree = _tree("handlers_write.py")
     missing = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.AsyncFunctionDef):
-            continue
-        for dec in node.decorator_list:
-            if not isinstance(dec, ast.Call):
+    for name in WRITE_FILES:
+        for node in ast.walk(_tree(name)):
+            if not isinstance(node, ast.AsyncFunctionDef):
                 continue
-            kinds = {kw.arg: kw.value for kw in dec.keywords}
-            action = kinds.get("action_type")
-            if not (isinstance(action, ast.Constant)
-                    and action.value in ("write", "destructive")):
-                continue
-            if "event" not in kinds:
-                missing.append(node.name)
+            for dec in node.decorator_list:
+                if not isinstance(dec, ast.Call):
+                    continue
+                kinds = {kw.arg: kw.value for kw in dec.keywords}
+                action = kinds.get("action_type")
+                if not (isinstance(action, ast.Constant)
+                        and action.value in ("write", "destructive")):
+                    continue
+                if "event" not in kinds:
+                    missing.append(f"{name}:{node.name}")
     assert not missing, f"write tools without event=: {missing}"
 
 
@@ -215,22 +222,22 @@ def test_deleting_a_message_is_classified_destructive():
     action_type="destructive" is what makes the kernel's two-step confirmation
     guard intercept the call, so the gate is declared rather than hand-rolled.
     """
-    tree = _tree("handlers_write.py")
     found = False
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.AsyncFunctionDef)
-                and node.name == "delete_message"):
-            continue
-        for dec in node.decorator_list:
-            if not isinstance(dec, ast.Call):
+    for name in WRITE_FILES:
+        for node in ast.walk(_tree(name)):
+            if not (isinstance(node, ast.AsyncFunctionDef)
+                    and node.name == "delete_message"):
                 continue
-            for kw in dec.keywords:
-                if kw.arg == "action_type":
-                    assert isinstance(kw.value, ast.Constant)
-                    assert kw.value.value == "destructive", (
-                        "delete_message must be destructive, not "
-                        f"{kw.value.value!r}")
-                    found = True
+            for dec in node.decorator_list:
+                if not isinstance(dec, ast.Call):
+                    continue
+                for kw in dec.keywords:
+                    if kw.arg == "action_type":
+                        assert isinstance(kw.value, ast.Constant)
+                        assert kw.value.value == "destructive", (
+                            "delete_message must be destructive, not "
+                            f"{kw.value.value!r}")
+                        found = True
     assert found, "delete_message has no action_type at all"
 
 
@@ -242,7 +249,7 @@ def test_every_tool_that_reaches_slack_goes_through_the_client():
     first symptom would be a Slack failure reported to the user as a success.
     """
     offenders = []
-    for name in ("handlers_read.py", "handlers_write.py", "panels.py"):
+    for name in WRITE_FILES + ["panels.py"]:
         tree = _tree(name)
         for node in ast.walk(tree):
             if (isinstance(node, ast.Attribute)

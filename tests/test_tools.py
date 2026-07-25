@@ -10,8 +10,24 @@ would cost the user:
 3. A token reaching the store, a log line or an error string.
 """
 
-import handlers_read as hr
-import handlers_write as hw
+# The handler modules are split by DOMAIN (directory / messages / post / admin),
+# but a test should not care which file a tool lives in -- that is an internal
+# layout detail, and rewriting every assertion when a function moves is how a
+# suite becomes expensive to keep. `hr`/`hw` are read/write facades over the
+# real modules, so the assertions below read the same as before the split.
+import types
+
+import handlers_admin
+import handlers_directory
+import handlers_messages
+import handlers_post
+
+hr = types.SimpleNamespace(
+    **{k: v for m in (handlers_directory, handlers_messages)
+       for k, v in vars(m).items() if not k.startswith("_")})
+hw = types.SimpleNamespace(
+    **{k: v for m in (handlers_post, handlers_admin)
+       for k, v in vars(m).items() if not k.startswith("_")})
 from conftest import (FAKE_BOT_TOKEN, FAKE_BOT_TOKEN_TWO,
                       auth_test_payload, channel_payload, err,
                       message_payload, ok, user_payload)

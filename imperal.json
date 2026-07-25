@@ -312,6 +312,321 @@
       "owner_chat_tool": "slack"
     },
     {
+      "name": "list_users",
+      "description": "List people in the Slack workspace, with names, emails and titles.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "query": {
+            "default": "",
+            "description": "Filter by name or email fragment. Empty lists everyone.",
+            "title": "Query",
+            "type": "string"
+          },
+          "include_bots": {
+            "default": false,
+            "description": "Include bot and app users (excluded by default)",
+            "title": "Include Bots",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum people to return",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ListUsersParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "real_name": {
+            "default": "",
+            "title": "Real Name",
+            "type": "string"
+          },
+          "user_id": {
+            "default": "",
+            "title": "User Id",
+            "type": "string"
+          },
+          "email": {
+            "default": "",
+            "title": "Email",
+            "type": "string"
+          },
+          "job_title": {
+            "default": "",
+            "title": "Job Title",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "is_bot": {
+            "default": false,
+            "title": "Is Bot",
+            "type": "boolean"
+          },
+          "is_admin": {
+            "default": false,
+            "title": "Is Admin",
+            "type": "boolean"
+          },
+          "is_deactivated": {
+            "default": false,
+            "title": "Is Deactivated",
+            "type": "boolean"
+          }
+        },
+        "title": "UserRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "check_access",
+      "description": "Report what this Slack app can currently reach, and explain why anything missing is not visible.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "title": "CheckAccessParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "What the token can currently reach, and why anything missing is missing.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "workspace_name": {
+            "default": "",
+            "title": "Workspace Name",
+            "type": "string"
+          },
+          "identity": {
+            "default": "",
+            "title": "Identity",
+            "type": "string"
+          },
+          "token_kind": {
+            "default": "",
+            "title": "Token Kind",
+            "type": "string"
+          },
+          "channels_visible": {
+            "default": 0,
+            "title": "Channels Visible",
+            "type": "integer"
+          },
+          "channels_joined": {
+            "default": 0,
+            "title": "Channels Joined",
+            "type": "integer"
+          },
+          "can_search": {
+            "default": false,
+            "title": "Can Search",
+            "type": "boolean"
+          },
+          "granted_scopes": {
+            "default": "",
+            "title": "Granted Scopes",
+            "type": "string"
+          },
+          "missing_for_common_tasks": {
+            "default": "",
+            "title": "Missing For Common Tasks",
+            "type": "string"
+          },
+          "explanation": {
+            "default": "",
+            "title": "Explanation",
+            "type": "string"
+          }
+        },
+        "title": "AccessReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
       "name": "read_channel",
       "description": "Read recent messages in a Slack channel by name -- actual text, with mentions and links resolved.",
       "action_type": "read",
@@ -801,321 +1116,6 @@
           }
         },
         "title": "SearchHit",
-        "type": "object",
-        "x-sdl": "entity"
-      },
-      "event": "",
-      "background": false,
-      "long_running": false,
-      "scopes": [],
-      "owner_chat_tool": "slack"
-    },
-    {
-      "name": "list_users",
-      "description": "List people in the Slack workspace, with names, emails and titles.",
-      "action_type": "read",
-      "chain_callable": true,
-      "effects": [],
-      "id_projection": "",
-      "params_schema": {
-        "properties": {
-          "workspace": {
-            "default": "",
-            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
-            "title": "Workspace",
-            "type": "string"
-          },
-          "query": {
-            "default": "",
-            "description": "Filter by name or email fragment. Empty lists everyone.",
-            "title": "Query",
-            "type": "string"
-          },
-          "include_bots": {
-            "default": false,
-            "description": "Include bot and app users (excluded by default)",
-            "title": "Include Bots",
-            "type": "boolean"
-          },
-          "limit": {
-            "default": 50,
-            "description": "Maximum people to return",
-            "maximum": 200,
-            "minimum": 1,
-            "title": "Limit",
-            "type": "integer"
-          }
-        },
-        "title": "ListUsersParams",
-        "type": "object"
-      },
-      "return_schema": {
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "default": "",
-            "title": "Id"
-          },
-          "title": {
-            "default": "",
-            "title": "Title",
-            "type": "string"
-          },
-          "kind": {
-            "default": "",
-            "title": "Kind",
-            "type": "string"
-          },
-          "subtitle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Subtitle"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Description"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Status"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Url"
-          },
-          "display_name": {
-            "default": "",
-            "title": "Display Name",
-            "type": "string"
-          },
-          "real_name": {
-            "default": "",
-            "title": "Real Name",
-            "type": "string"
-          },
-          "user_id": {
-            "default": "",
-            "title": "User Id",
-            "type": "string"
-          },
-          "email": {
-            "default": "",
-            "title": "Email",
-            "type": "string"
-          },
-          "job_title": {
-            "default": "",
-            "title": "Job Title",
-            "type": "string"
-          },
-          "timezone": {
-            "default": "",
-            "title": "Timezone",
-            "type": "string"
-          },
-          "is_bot": {
-            "default": false,
-            "title": "Is Bot",
-            "type": "boolean"
-          },
-          "is_admin": {
-            "default": false,
-            "title": "Is Admin",
-            "type": "boolean"
-          },
-          "is_deactivated": {
-            "default": false,
-            "title": "Is Deactivated",
-            "type": "boolean"
-          }
-        },
-        "title": "UserRecord",
-        "type": "object",
-        "x-sdl": "entity"
-      },
-      "event": "",
-      "background": false,
-      "long_running": false,
-      "scopes": [],
-      "owner_chat_tool": "slack"
-    },
-    {
-      "name": "check_access",
-      "description": "Report what this Slack app can currently reach, and explain why anything missing is not visible.",
-      "action_type": "read",
-      "chain_callable": true,
-      "effects": [],
-      "id_projection": "",
-      "params_schema": {
-        "properties": {
-          "workspace": {
-            "default": "",
-            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
-            "title": "Workspace",
-            "type": "string"
-          }
-        },
-        "title": "CheckAccessParams",
-        "type": "object"
-      },
-      "return_schema": {
-        "description": "What the token can currently reach, and why anything missing is missing.",
-        "properties": {
-          "id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "integer"
-              }
-            ],
-            "default": "",
-            "title": "Id"
-          },
-          "title": {
-            "default": "",
-            "title": "Title",
-            "type": "string"
-          },
-          "kind": {
-            "default": "",
-            "title": "Kind",
-            "type": "string"
-          },
-          "subtitle": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Subtitle"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Description"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Status"
-          },
-          "url": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Url"
-          },
-          "workspace_name": {
-            "default": "",
-            "title": "Workspace Name",
-            "type": "string"
-          },
-          "identity": {
-            "default": "",
-            "title": "Identity",
-            "type": "string"
-          },
-          "token_kind": {
-            "default": "",
-            "title": "Token Kind",
-            "type": "string"
-          },
-          "channels_visible": {
-            "default": 0,
-            "title": "Channels Visible",
-            "type": "integer"
-          },
-          "channels_joined": {
-            "default": 0,
-            "title": "Channels Joined",
-            "type": "integer"
-          },
-          "can_search": {
-            "default": false,
-            "title": "Can Search",
-            "type": "boolean"
-          },
-          "granted_scopes": {
-            "default": "",
-            "title": "Granted Scopes",
-            "type": "string"
-          },
-          "missing_for_common_tasks": {
-            "default": "",
-            "title": "Missing For Common Tasks",
-            "type": "string"
-          },
-          "explanation": {
-            "default": "",
-            "title": "Explanation",
-            "type": "string"
-          }
-        },
-        "title": "AccessReport",
         "type": "object",
         "x-sdl": "entity"
       },
