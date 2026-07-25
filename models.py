@@ -1,0 +1,371 @@
+"""Pydantic parameter models and SDL return entities.
+
+Every parameter that names a Slack object accepts a NAME, not just an id
+(name-first, as with the Notion connector). Ids are still accepted -- pasting
+one out of a Slack link must keep working -- but nothing here ever REQUIRES the
+user to go find one.
+
+Message identity deserves a note: Slack identifies a message by its `ts`
+string, so every parameter that targets a message takes `ts` as a STRING and
+never a number. A float loses microsecond precision and produces a ts Slack no
+longer recognises, which means replies land in the wrong place or not at all.
+"""
+
+from typing import ClassVar
+
+from pydantic import BaseModel, Field, model_validator
+from imperal_sdk import sdl
+
+
+# --------------------------- parameters ---------------------------
+
+class WorkspaceScoped(BaseModel):
+    """Base for every tool: which connected workspace to act in."""
+    workspace: str = Field(
+        "", description="Workspace name, e.g. 'Acme'. Omit when only one "
+                        "Slack workspace is connected.")
+
+
+class ListWorkspacesParams(BaseModel):
+    refresh: bool = Field(
+        False,
+        description="Re-read workspace details from Slack instead of the cache")
+
+
+class ConnectWorkspaceParams(BaseModel):
+    """The token the user pastes on the Connect screen.
+
+    Not WorkspaceScoped: this is the one action that runs BEFORE any workspace
+    exists, so asking which workspace to act in would be circular. The
+    workspace is discovered FROM the token.
+    """
+    token: str = Field(
+        "", description="Slack app token: bot token starts with 'xoxb-', user "
+                        "token with 'xoxp-'. Create one at api.slack.com/apps.")
+
+
+class ListChannelsParams(WorkspaceScoped):
+    query: str = Field(
+        "", description="Filter channels by name fragment, e.g. 'standup'. "
+                        "Empty returns all visible channels.")
+    kind: str = Field(
+        "", description="Limit to 'public', 'private', 'dm' or 'group_dm'. "
+                        "Empty returns every kind the app can see.")
+    include_archived: bool = Field(
+        False, description="Include archived channels (excluded by default)")
+    member_only: bool = Field(
+        False, description="Only channels the app itself belongs to")
+    limit: int = Field(
+        50, ge=1, le=200, description="Maximum channels to return")
+
+
+class ReadChannelParams(WorkspaceScoped):
+    channel: str = Field(
+        ..., description="Channel name or id, e.g. '#general', 'general' or "
+                         "'C024BE7LR'")
+    limit: int = Field(
+        30, ge=1, le=200,
+        description="How many recent messages to read (newest first)")
+    include_thread_counts: bool = Field(
+        True, description="Report how many replies each message has")
+
+
+class ReadThreadParams(WorkspaceScoped):
+    channel: str = Field(
+        ..., description="Channel name or id the thread lives in")
+    ts: str = Field(
+        ..., description="Timestamp of the thread's parent message, e.g. "
+                         "'1690000000.123456'. Pass it as text, not a number.")
+    limit: int = Field(
+        50, ge=1, le=200, description="Maximum replies to return")
+
+
+class SearchMessagesParams(WorkspaceScoped):
+    query: str = Field(
+        ..., description="Search text. Slack modifiers work too, e.g. "
+                         "'in:#general from:@vlad deploy'.")
+    limit: int = Field(
+        20, ge=1, le=100, description="Maximum matches to return")
+
+
+class ListUsersParams(WorkspaceScoped):
+    query: str = Field(
+        "", description="Filter by name or email fragment. Empty lists everyone.")
+    include_bots: bool = Field(
+        False, description="Include bot and app users (excluded by default)")
+    limit: int = Field(
+        50, ge=1, le=200, description="Maximum people to return")
+
+
+class CheckAccessParams(WorkspaceScoped):
+    pass
+
+
+class SendMessageParams(WorkspaceScoped):
+    channel: str = Field(
+        ..., description="Channel name or id to post to, e.g. '#general'. A "
+                         "person's name or @handle sends a direct message.")
+    text: str = Field(
+        ..., description="Message text. Slack mrkdwn works: *bold*, _italic_, "
+                         "`code`, <http://url|label>.")
+    thread_ts: str = Field(
+        "", description="Reply inside an existing thread instead of posting to "
+                        "the channel. Timestamp of the parent message, as text.")
+    reply_broadcast: bool = Field(
+        False,
+        description="When replying in a thread, also show the reply in the channel")
+    unfurl_links: bool = Field(
+        True, description="Let Slack expand link previews")
+
+
+class EditMessageParams(WorkspaceScoped):
+    channel: str = Field(..., description="Channel name or id the message is in")
+    ts: str = Field(
+        ..., description="Timestamp of the message to edit, as text")
+    text: str = Field(..., description="Replacement text for the message")
+
+
+class DeleteMessageParams(WorkspaceScoped):
+    channel: str = Field(..., description="Channel name or id the message is in")
+    ts: str = Field(
+        ..., description="Timestamp of the message to delete, as text")
+
+
+class ReactionParams(WorkspaceScoped):
+    channel: str = Field(..., description="Channel name or id the message is in")
+    ts: str = Field(
+        ..., description="Timestamp of the message to react to, as text")
+    emoji: str = Field(
+        ..., description="Emoji name without colons, e.g. 'thumbsup' or 'eyes'")
+    remove: bool = Field(
+        False, description="Set true to remove the reaction instead of adding it")
+
+
+class PinParams(WorkspaceScoped):
+    channel: str = Field(..., description="Channel name or id the message is in")
+    ts: str = Field(
+        ..., description="Timestamp of the message to pin, as text")
+    unpin: bool = Field(
+        False, description="Set true to unpin instead of pin")
+
+
+class CreateChannelParams(WorkspaceScoped):
+    name: str = Field(
+        ..., description="Channel name, e.g. 'project-apollo'. Slack lowercases "
+                         "it and replaces spaces with hyphens.")
+    private: bool = Field(
+        False, description="Create a private channel instead of a public one")
+    topic: str = Field("", description="Optional channel topic to set")
+    invite: str = Field(
+        "", description="Optional comma-separated names to invite, e.g. "
+                        "'@vlad, @maria'")
+
+
+class InviteParams(WorkspaceScoped):
+    channel: str = Field(..., description="Channel name or id to invite into")
+    users: str = Field(
+        ..., description="Comma-separated names, @handles or ids to invite")
+
+
+class SetTopicParams(WorkspaceScoped):
+    channel: str = Field(..., description="Channel name or id to update")
+    topic: str = Field(
+        "", description="New channel topic. Empty clears it.")
+    purpose: str = Field(
+        "", description="New channel purpose/description. Empty leaves it as is.")
+
+
+# --------------------------- returned entities ---------------------------
+
+# `sdl.Entity` REQUIRES `id` and `title`: they are what the narrator and the
+# audit ledger use to name a result ("sent to #general") rather than printing a
+# dict. Passing them by hand at every construction site is how one gets
+# forgotten -- and a forgotten one is a ValidationError at runtime, on the
+# SUCCESS path, after the Slack write already happened. That is the worst
+# possible place to fail: the side effect is done and the user still sees an
+# error.
+#
+# So each entity below derives them from its own domain fields instead. A
+# subclass states WHICH of its fields carry identity and name, and the
+# validator fills the contract.
+class _Named(sdl.Entity):
+    """Base that satisfies the required id/title from domain fields.
+
+    Subclasses set `_id_field` / `_title_field`. Both default to empty rather
+    than to a placeholder like "unknown": an entity with no natural name should
+    read as blank, never as invented text.
+    """
+    id: str | int = ""
+    title: str = ""
+
+    _id_field: ClassVar[str] = ""
+    _title_field: ClassVar[str] = ""
+
+    @model_validator(mode="after")
+    def _fill_identity(self):
+        if not self.id and self._id_field:
+            self.id = str(getattr(self, self._id_field, "") or "")
+        if not self.title and self._title_field:
+            self.title = str(getattr(self, self._title_field, "") or "")
+        return self
+
+
+class WorkspaceRecord(_Named):
+    """One connected Slack workspace and whether its token still works."""
+    workspace_name: str = ""
+    workspace_id: str = ""
+    identity: str = ""
+    token_kind: str = ""
+    detail: str = ""
+
+    _id_field: ClassVar[str] = "workspace_id"
+    _title_field: ClassVar[str] = "workspace_name"
+
+
+class WorkspaceList(_Named):
+    workspaces: list[WorkspaceRecord] = []
+    count: int = 0
+    note: str = ""
+
+    title: str = "Connected Slack workspaces"
+
+
+class ChannelRecord(_Named):
+    """A conversation: channel, private channel, DM or group DM."""
+    name: str = ""
+    channel_id: str = ""
+    topic: str = ""
+    purpose: str = ""
+    member_count: int = 0
+    is_member: bool = False
+    is_archived: bool = False
+
+    _id_field: ClassVar[str] = "channel_id"
+    _title_field: ClassVar[str] = "name"
+
+
+class ChannelList(_Named):
+    channels: list[ChannelRecord] = []
+    count: int = 0
+    has_more: bool = False
+    note: str = ""
+
+    title: str = "Slack conversations"
+
+
+class MessageRecord(_Named):
+    """One message, with mentions and links already rendered readable."""
+    text: str = ""
+    author: str = ""
+    author_id: str = ""
+    ts: str = ""
+    posted_at: str = ""
+    thread_ts: str = ""
+    reply_count: int = 0
+    reactions: str = ""
+    is_thread_parent: bool = False
+    permalink: str = ""
+
+    _id_field: ClassVar[str] = "ts"
+    _title_field: ClassVar[str] = "author"
+
+
+class MessageList(_Named):
+    channel: str = ""
+    channel_id: str = ""
+    messages: list[MessageRecord] = []
+    count: int = 0
+    has_more: bool = False
+    note: str = ""
+
+    _id_field: ClassVar[str] = "channel_id"
+    _title_field: ClassVar[str] = "channel"
+
+
+class SearchHit(_Named):
+    """A search match -- carries its channel, since results span the workspace."""
+    text: str = ""
+    author: str = ""
+    channel: str = ""
+    ts: str = ""
+    posted_at: str = ""
+    permalink: str = ""
+
+    _id_field: ClassVar[str] = "ts"
+    _title_field: ClassVar[str] = "channel"
+
+
+class SearchResults(_Named):
+    query: str = ""
+    hits: list[SearchHit] = []
+    count: int = 0
+    total_available: int = 0
+    note: str = ""
+
+    _title_field: ClassVar[str] = "query"
+
+
+class UserRecord(_Named):
+    display_name: str = ""
+    real_name: str = ""
+    user_id: str = ""
+    email: str = ""
+    # NOT `title`: that is the required entity title on sdl.Entity, and Slack's
+    # "title" means job title. Shadowing it silently replaced the entity's name
+    # with a job description -- so the domain field is renamed instead.
+    job_title: str = ""
+    timezone: str = ""
+    is_bot: bool = False
+    is_admin: bool = False
+    is_deactivated: bool = False
+
+    _id_field: ClassVar[str] = "user_id"
+    _title_field: ClassVar[str] = "display_name"
+
+
+class UserList(_Named):
+    users: list[UserRecord] = []
+    count: int = 0
+    has_more: bool = False
+
+    title: str = "Slack workspace members"
+
+
+class AccessReport(_Named):
+    """What the token can currently reach, and why anything missing is missing."""
+    workspace_name: str = ""
+    identity: str = ""
+    token_kind: str = ""
+    channels_visible: int = 0
+    channels_joined: int = 0
+    can_search: bool = False
+    granted_scopes: str = ""
+    missing_for_common_tasks: str = ""
+    explanation: str = ""
+
+    _title_field: ClassVar[str] = "workspace_name"
+
+
+class MessageAck(_Named):
+    """Confirmation of a write against a message."""
+    channel: str = ""
+    channel_id: str = ""
+    ts: str = ""
+    action: str = ""
+    permalink: str = ""
+    detail: str = ""
+
+    _id_field: ClassVar[str] = "ts"
+    _title_field: ClassVar[str] = "channel"
+
+
+class ChannelAck(_Named):
+    """Confirmation of a write against a channel."""
+    name: str = ""
+    channel_id: str = ""
+    action: str = ""
+    invited: str = ""
+    detail: str = ""
+
+    _id_field: ClassVar[str] = "channel_id"
+    _title_field: ClassVar[str] = "name"

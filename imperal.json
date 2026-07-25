@@ -1,0 +1,2552 @@
+{
+  "manifest_schema_version": 3,
+  "sdk_version": "5.9.12",
+  "app_id": "slack-connector",
+  "version": "1.0.0",
+  "name": "Slack Connector",
+  "description": "Read and operate on Slack workspaces: list channels, read channel history and threads, search messages, look up users, post and reply to messages, react, pin and manage channels across multiple workspaces.",
+  "icon": "icon.svg",
+  "actions_explicit": true,
+  "system": false,
+  "capabilities": [
+    "slack:read",
+    "slack:write"
+  ],
+  "tools": [
+    {
+      "name": "list_workspaces",
+      "description": "List the connected Slack workspaces and whether each token still works.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "refresh": {
+            "default": false,
+            "description": "Re-read workspace details from Slack instead of the cache",
+            "title": "Refresh",
+            "type": "boolean"
+          }
+        },
+        "title": "ListWorkspacesParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One connected Slack workspace and whether its token still works.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "workspace_name": {
+            "default": "",
+            "title": "Workspace Name",
+            "type": "string"
+          },
+          "workspace_id": {
+            "default": "",
+            "title": "Workspace Id",
+            "type": "string"
+          },
+          "identity": {
+            "default": "",
+            "title": "Identity",
+            "type": "string"
+          },
+          "token_kind": {
+            "default": "",
+            "title": "Token Kind",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "WorkspaceRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "list_channels",
+      "description": "List Slack channels and conversations the app can see, with topics and whether the app is a member.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "query": {
+            "default": "",
+            "description": "Filter channels by name fragment, e.g. 'standup'. Empty returns all visible channels.",
+            "title": "Query",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "description": "Limit to 'public', 'private', 'dm' or 'group_dm'. Empty returns every kind the app can see.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "include_archived": {
+            "default": false,
+            "description": "Include archived channels (excluded by default)",
+            "title": "Include Archived",
+            "type": "boolean"
+          },
+          "member_only": {
+            "default": false,
+            "description": "Only channels the app itself belongs to",
+            "title": "Member Only",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum channels to return",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ListChannelsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "A conversation: channel, private channel, DM or group DM.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "topic": {
+            "default": "",
+            "title": "Topic",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "member_count": {
+            "default": 0,
+            "title": "Member Count",
+            "type": "integer"
+          },
+          "is_member": {
+            "default": false,
+            "title": "Is Member",
+            "type": "boolean"
+          },
+          "is_archived": {
+            "default": false,
+            "title": "Is Archived",
+            "type": "boolean"
+          }
+        },
+        "title": "ChannelRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "read_channel",
+      "description": "Read recent messages in a Slack channel by name -- actual text, with mentions and links resolved.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id, e.g. '#general', 'general' or 'C024BE7LR'",
+            "title": "Channel",
+            "type": "string"
+          },
+          "limit": {
+            "default": 30,
+            "description": "How many recent messages to read (newest first)",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "include_thread_counts": {
+            "default": true,
+            "description": "Report how many replies each message has",
+            "title": "Include Thread Counts",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "title": "ReadChannelParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One message, with mentions and links already rendered readable.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "author": {
+            "default": "",
+            "title": "Author",
+            "type": "string"
+          },
+          "author_id": {
+            "default": "",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "posted_at": {
+            "default": "",
+            "title": "Posted At",
+            "type": "string"
+          },
+          "thread_ts": {
+            "default": "",
+            "title": "Thread Ts",
+            "type": "string"
+          },
+          "reply_count": {
+            "default": 0,
+            "title": "Reply Count",
+            "type": "integer"
+          },
+          "reactions": {
+            "default": "",
+            "title": "Reactions",
+            "type": "string"
+          },
+          "is_thread_parent": {
+            "default": false,
+            "title": "Is Thread Parent",
+            "type": "boolean"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          }
+        },
+        "title": "MessageRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "read_thread",
+      "description": "Read a Slack thread: the parent message and all its replies in order.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id the thread lives in",
+            "title": "Channel",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Timestamp of the thread's parent message, e.g. '1690000000.123456'. Pass it as text, not a number.",
+            "title": "Ts",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum replies to return",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "ts"
+        ],
+        "title": "ReadThreadParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One message, with mentions and links already rendered readable.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "author": {
+            "default": "",
+            "title": "Author",
+            "type": "string"
+          },
+          "author_id": {
+            "default": "",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "posted_at": {
+            "default": "",
+            "title": "Posted At",
+            "type": "string"
+          },
+          "thread_ts": {
+            "default": "",
+            "title": "Thread Ts",
+            "type": "string"
+          },
+          "reply_count": {
+            "default": 0,
+            "title": "Reply Count",
+            "type": "integer"
+          },
+          "reactions": {
+            "default": "",
+            "title": "Reactions",
+            "type": "string"
+          },
+          "is_thread_parent": {
+            "default": false,
+            "title": "Is Thread Parent",
+            "type": "boolean"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          }
+        },
+        "title": "MessageRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "search_messages",
+      "description": "Search Slack messages across the workspace. Needs a user token -- Slack does not offer search to bot tokens.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "query": {
+            "description": "Search text. Slack modifiers work too, e.g. 'in:#general from:@vlad deploy'.",
+            "title": "Query",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum matches to return",
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchMessagesParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "A search match -- carries its channel, since results span the workspace.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "author": {
+            "default": "",
+            "title": "Author",
+            "type": "string"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "posted_at": {
+            "default": "",
+            "title": "Posted At",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          }
+        },
+        "title": "SearchHit",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "list_users",
+      "description": "List people in the Slack workspace, with names, emails and titles.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "query": {
+            "default": "",
+            "description": "Filter by name or email fragment. Empty lists everyone.",
+            "title": "Query",
+            "type": "string"
+          },
+          "include_bots": {
+            "default": false,
+            "description": "Include bot and app users (excluded by default)",
+            "title": "Include Bots",
+            "type": "boolean"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum people to return",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "title": "ListUsersParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "display_name": {
+            "default": "",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "real_name": {
+            "default": "",
+            "title": "Real Name",
+            "type": "string"
+          },
+          "user_id": {
+            "default": "",
+            "title": "User Id",
+            "type": "string"
+          },
+          "email": {
+            "default": "",
+            "title": "Email",
+            "type": "string"
+          },
+          "job_title": {
+            "default": "",
+            "title": "Job Title",
+            "type": "string"
+          },
+          "timezone": {
+            "default": "",
+            "title": "Timezone",
+            "type": "string"
+          },
+          "is_bot": {
+            "default": false,
+            "title": "Is Bot",
+            "type": "boolean"
+          },
+          "is_admin": {
+            "default": false,
+            "title": "Is Admin",
+            "type": "boolean"
+          },
+          "is_deactivated": {
+            "default": false,
+            "title": "Is Deactivated",
+            "type": "boolean"
+          }
+        },
+        "title": "UserRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "check_access",
+      "description": "Report what this Slack app can currently reach, and explain why anything missing is not visible.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          }
+        },
+        "title": "CheckAccessParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "What the token can currently reach, and why anything missing is missing.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "workspace_name": {
+            "default": "",
+            "title": "Workspace Name",
+            "type": "string"
+          },
+          "identity": {
+            "default": "",
+            "title": "Identity",
+            "type": "string"
+          },
+          "token_kind": {
+            "default": "",
+            "title": "Token Kind",
+            "type": "string"
+          },
+          "channels_visible": {
+            "default": 0,
+            "title": "Channels Visible",
+            "type": "integer"
+          },
+          "channels_joined": {
+            "default": 0,
+            "title": "Channels Joined",
+            "type": "integer"
+          },
+          "can_search": {
+            "default": false,
+            "title": "Can Search",
+            "type": "boolean"
+          },
+          "granted_scopes": {
+            "default": "",
+            "title": "Granted Scopes",
+            "type": "string"
+          },
+          "missing_for_common_tasks": {
+            "default": "",
+            "title": "Missing For Common Tasks",
+            "type": "string"
+          },
+          "explanation": {
+            "default": "",
+            "title": "Explanation",
+            "type": "string"
+          }
+        },
+        "title": "AccessReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "connect_workspace",
+      "description": "Connect a Slack workspace by saving its token, after checking the token actually works.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.workspace.connected"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "The token the user pastes on the Connect screen.\n\nNot WorkspaceScoped: this is the one action that runs BEFORE any workspace\nexists, so asking which workspace to act in would be circular. The\nworkspace is discovered FROM the token.",
+        "properties": {
+          "token": {
+            "default": "",
+            "description": "Slack app token: bot token starts with 'xoxb-', user token with 'xoxp-'. Create one at api.slack.com/apps.",
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "title": "ConnectWorkspaceParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Reuses the ack shape; `name` carries the workspace name.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "invited": {
+            "default": "",
+            "title": "Invited",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "_ConnectAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.connect_workspace",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "send_message",
+      "description": "Send a Slack message to a channel or person, or reply inside a thread.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.message.sent"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id to post to, e.g. '#general'. A person's name or @handle sends a direct message.",
+            "title": "Channel",
+            "type": "string"
+          },
+          "text": {
+            "description": "Message text. Slack mrkdwn works: *bold*, _italic_, `code`, <http://url|label>.",
+            "title": "Text",
+            "type": "string"
+          },
+          "thread_ts": {
+            "default": "",
+            "description": "Reply inside an existing thread instead of posting to the channel. Timestamp of the parent message, as text.",
+            "title": "Thread Ts",
+            "type": "string"
+          },
+          "reply_broadcast": {
+            "default": false,
+            "description": "When replying in a thread, also show the reply in the channel",
+            "title": "Reply Broadcast",
+            "type": "boolean"
+          },
+          "unfurl_links": {
+            "default": true,
+            "description": "Let Slack expand link previews",
+            "title": "Unfurl Links",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel",
+          "text"
+        ],
+        "title": "SendMessageParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a message.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "MessageAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.send_message",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "edit_message",
+      "description": "Edit the text of a Slack message the app posted.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.message.updated"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id the message is in",
+            "title": "Channel",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Timestamp of the message to edit, as text",
+            "title": "Ts",
+            "type": "string"
+          },
+          "text": {
+            "description": "Replacement text for the message",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "ts",
+          "text"
+        ],
+        "title": "EditMessageParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a message.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "MessageAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.edit_message",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "delete_message",
+      "description": "Delete a Slack message the app posted.",
+      "action_type": "destructive",
+      "chain_callable": true,
+      "effects": [
+        "slack.message.deleted"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id the message is in",
+            "title": "Channel",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Timestamp of the message to delete, as text",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "ts"
+        ],
+        "title": "DeleteMessageParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a message.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "MessageAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.delete_message",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "react_to_message",
+      "description": "Add or remove an emoji reaction on a Slack message.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.reaction.changed"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id the message is in",
+            "title": "Channel",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Timestamp of the message to react to, as text",
+            "title": "Ts",
+            "type": "string"
+          },
+          "emoji": {
+            "description": "Emoji name without colons, e.g. 'thumbsup' or 'eyes'",
+            "title": "Emoji",
+            "type": "string"
+          },
+          "remove": {
+            "default": false,
+            "description": "Set true to remove the reaction instead of adding it",
+            "title": "Remove",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel",
+          "ts",
+          "emoji"
+        ],
+        "title": "ReactionParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a message.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "MessageAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.react_to_message",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "pin_message",
+      "description": "Pin or unpin a Slack message in its channel.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.pin.changed"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id the message is in",
+            "title": "Channel",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Timestamp of the message to pin, as text",
+            "title": "Ts",
+            "type": "string"
+          },
+          "unpin": {
+            "default": false,
+            "description": "Set true to unpin instead of pin",
+            "title": "Unpin",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel",
+          "ts"
+        ],
+        "title": "PinParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a message.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "MessageAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.pin_message",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "create_channel",
+      "description": "Create a Slack channel, optionally private, with a topic and invitees.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.channel.created"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "name": {
+            "description": "Channel name, e.g. 'project-apollo'. Slack lowercases it and replaces spaces with hyphens.",
+            "title": "Name",
+            "type": "string"
+          },
+          "private": {
+            "default": false,
+            "description": "Create a private channel instead of a public one",
+            "title": "Private",
+            "type": "boolean"
+          },
+          "topic": {
+            "default": "",
+            "description": "Optional channel topic to set",
+            "title": "Topic",
+            "type": "string"
+          },
+          "invite": {
+            "default": "",
+            "description": "Optional comma-separated names to invite, e.g. '@vlad, @maria'",
+            "title": "Invite",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateChannelParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a channel.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "invited": {
+            "default": "",
+            "title": "Invited",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "ChannelAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.create_channel",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "invite_to_channel",
+      "description": "Invite people to a Slack channel by name.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.channel.updated"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id to invite into",
+            "title": "Channel",
+            "type": "string"
+          },
+          "users": {
+            "description": "Comma-separated names, @handles or ids to invite",
+            "title": "Users",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "users"
+        ],
+        "title": "InviteParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a channel.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "invited": {
+            "default": "",
+            "title": "Invited",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "ChannelAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.invite_to_channel",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "set_channel_topic",
+      "description": "Set a Slack channel's topic and/or purpose.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.channel.updated"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id to update",
+            "title": "Channel",
+            "type": "string"
+          },
+          "topic": {
+            "default": "",
+            "description": "New channel topic. Empty clears it.",
+            "title": "Topic",
+            "type": "string"
+          },
+          "purpose": {
+            "default": "",
+            "description": "New channel purpose/description. Empty leaves it as is.",
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel"
+        ],
+        "title": "SetTopicParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Confirmation of a write against a channel.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "name": {
+            "default": "",
+            "title": "Name",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "invited": {
+            "default": "",
+            "title": "Invited",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "ChannelAck",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.set_channel_topic",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    }
+  ],
+  "signals": [],
+  "schedules": [],
+  "required_scopes": [],
+  "icon_size_bytes": 374,
+  "lifecycle": {
+    "on_install": true,
+    "health_check": {
+      "interval_sec": 60
+    }
+  },
+  "lifecycle_hooks": {
+    "on_install": {
+      "signature": "(ctx)"
+    }
+  },
+  "secrets": [
+    {
+      "name": "slack_tokens",
+      "description": "Slack app token(s) -- one per line, one line per workspace. Create an app at api.slack.com/apps, add the scopes you need, install it to the workspace, then copy the Bot User OAuth Token (starts with xoxb-).",
+      "required": true,
+      "write_mode": "both",
+      "max_bytes": 4096,
+      "scope": "user",
+      "rotation_hint_days": 180
+    }
+  ],
+  "panels": [
+    {
+      "panel_id": "secrets",
+      "slot": "right",
+      "title": "Secrets",
+      "tree": {},
+      "icon": "KeyRound",
+      "refresh": "manual",
+      "center_overlay": false
+    },
+    {
+      "panel_id": "slack",
+      "slot": "center",
+      "title": "Slack",
+      "tree": {},
+      "icon": "MessageSquare",
+      "refresh": "manual",
+      "center_overlay": true
+    },
+    {
+      "panel_id": "slack_nav",
+      "slot": "left",
+      "title": "Slack",
+      "tree": {},
+      "icon": "MessageSquare",
+      "refresh": "manual",
+      "center_overlay": false
+    }
+  ]
+}
