@@ -82,6 +82,28 @@ ext.secret(
     rotation_hint_days=180,
 )(lambda: None)
 
+# The SIGNING SECRET is what makes the inbound endpoint safe. Slack signs every
+# delivery with it (HMAC-SHA256 over timestamp + raw body); without it any
+# caller who learns the URL could fabricate "messages" and make this app act on
+# them. It is a SEPARATE secret from the token because it is a different
+# credential with a different job: the token lets the app talk TO Slack, this
+# proves a request came FROM Slack.
+#
+# Deliberately NOT required=True: the connector is fully usable for sending and
+# reading without it. Marking it required would make a working outbound-only
+# install look broken.
+ext.secret(
+    "slack_signing_secret",
+    "Slack signing secret — proves an inbound event really came from Slack. "
+    "Find it at api.slack.com/apps → your app → Basic Information → App "
+    "Credentials → Signing Secret. Needed only for inbound events; sending "
+    "and reading work without it.",
+    required=False,
+    write_mode="both",
+    max_bytes=256,
+    rotation_hint_days=180,
+)(lambda: None)
+
 
 @ext.health_check
 async def health_check(ctx) -> dict:

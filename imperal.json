@@ -1295,6 +1295,12 @@
             "title": "Reply Broadcast",
             "type": "boolean"
           },
+          "reply_to_last_thread": {
+            "default": false,
+            "description": "Answer in the thread where this channel's most recent inbound Slack message arrived. Use this when replying to a Slack event (a mention or a thread reply) and you do not have the thread_ts to hand — the connector remembers it. Ignored when thread_ts is given explicitly.",
+            "title": "Reply To Last Thread",
+            "type": "boolean"
+          },
           "unfurl_links": {
             "default": true,
             "description": "Let Slack expand link previews",
@@ -2492,12 +2498,772 @@
       "long_running": false,
       "scopes": [],
       "owner_chat_tool": "slack"
+    },
+    {
+      "name": "fetch_message",
+      "description": "Read one specific Slack message by its timestamp -- the message an event referred to.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Read ONE message by ts -- the message a Slack event pointed at.",
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id the message is in. Pass the channel_id straight from the Slack event.",
+            "title": "Channel",
+            "type": "string"
+          },
+          "ts": {
+            "description": "Timestamp of the message, as text — the message_ts from the event. Never pass it as a number: a float loses precision and Slack stops recognising it.",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "ts"
+        ],
+        "title": "FetchMessageParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One message, with mentions and links already rendered readable.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "author": {
+            "default": "",
+            "title": "Author",
+            "type": "string"
+          },
+          "author_id": {
+            "default": "",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "posted_at": {
+            "default": "",
+            "title": "Posted At",
+            "type": "string"
+          },
+          "thread_ts": {
+            "default": "",
+            "title": "Thread Ts",
+            "type": "string"
+          },
+          "reply_count": {
+            "default": 0,
+            "title": "Reply Count",
+            "type": "integer"
+          },
+          "reactions": {
+            "default": "",
+            "title": "Reactions",
+            "type": "string"
+          },
+          "is_thread_parent": {
+            "default": false,
+            "title": "Is Thread Parent",
+            "type": "boolean"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          }
+        },
+        "title": "MessageRecord",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "fetch_thread_context",
+      "description": "Read the whole thread around a message, so a reply answers the actual conversation rather than one line of it.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Read a whole thread, so a reply can answer the conversation.",
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channel": {
+            "description": "Channel name or id the thread lives in. Pass the channel_id straight from the Slack event.",
+            "title": "Channel",
+            "type": "string"
+          },
+          "thread_ts": {
+            "description": "Thread timestamp as text — the thread_ts or reply_thread_ts from the event.",
+            "title": "Thread Ts",
+            "type": "string"
+          },
+          "limit": {
+            "default": 50,
+            "description": "Maximum messages to return",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "thread_ts"
+        ],
+        "title": "FetchThreadContextParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "$defs": {
+          "MessageRecord": {
+            "description": "One message, with mentions and links already rendered readable.",
+            "properties": {
+              "id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "integer"
+                  }
+                ],
+                "default": "",
+                "title": "Id"
+              },
+              "title": {
+                "default": "",
+                "title": "Title",
+                "type": "string"
+              },
+              "kind": {
+                "default": "",
+                "title": "Kind",
+                "type": "string"
+              },
+              "subtitle": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Subtitle"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Description"
+              },
+              "status": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Status"
+              },
+              "url": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Url"
+              },
+              "text": {
+                "default": "",
+                "title": "Text",
+                "type": "string"
+              },
+              "author": {
+                "default": "",
+                "title": "Author",
+                "type": "string"
+              },
+              "author_id": {
+                "default": "",
+                "title": "Author Id",
+                "type": "string"
+              },
+              "ts": {
+                "default": "",
+                "title": "Ts",
+                "type": "string"
+              },
+              "posted_at": {
+                "default": "",
+                "title": "Posted At",
+                "type": "string"
+              },
+              "thread_ts": {
+                "default": "",
+                "title": "Thread Ts",
+                "type": "string"
+              },
+              "reply_count": {
+                "default": 0,
+                "title": "Reply Count",
+                "type": "integer"
+              },
+              "reactions": {
+                "default": "",
+                "title": "Reactions",
+                "type": "string"
+              },
+              "is_thread_parent": {
+                "default": false,
+                "title": "Is Thread Parent",
+                "type": "boolean"
+              },
+              "permalink": {
+                "default": "",
+                "title": "Permalink",
+                "type": "string"
+              }
+            },
+            "title": "MessageRecord",
+            "type": "object",
+            "x-sdl": "entity"
+          }
+        },
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "messages": {
+            "default": [],
+            "items": {
+              "$ref": "#/$defs/MessageRecord"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "count": {
+            "default": 0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "thread_ts": {
+            "default": "",
+            "title": "Thread Ts",
+            "type": "string"
+          }
+        },
+        "title": "MessageList",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "inbound_status",
+      "description": "Report whether the Slack events endpoint is ready: signing secret, endpoint URL, and what to paste into the Slack app settings.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "No inputs: it reports on configuration, which is not parameterised.",
+        "properties": {},
+        "title": "InboundStatusParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Whether the Slack events endpoint is ready to receive.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "endpoint_url": {
+            "default": "",
+            "title": "Endpoint Url",
+            "type": "string"
+          },
+          "signing_secret_set": {
+            "default": false,
+            "title": "Signing Secret Set",
+            "type": "boolean"
+          },
+          "workspaces_connected": {
+            "default": 0,
+            "title": "Workspaces Connected",
+            "type": "integer"
+          },
+          "events_deduplicated": {
+            "default": 0,
+            "title": "Events Deduplicated",
+            "type": "integer"
+          },
+          "ready": {
+            "default": false,
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "state": {
+            "default": "",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "title": "InboundStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "connect_events",
+      "description": "Save the Slack signing secret so inbound Slack events can be verified and accepted.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.events.configured"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Save the Slack signing secret that authenticates inbound deliveries.",
+        "properties": {
+          "signing_secret": {
+            "description": "The app's Signing Secret from Slack → Basic Information → App Credentials. A 32-character hex string; NOT the bot token.",
+            "title": "Signing Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "signing_secret"
+        ],
+        "title": "ConnectEventsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Whether the Slack events endpoint is ready to receive.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "endpoint_url": {
+            "default": "",
+            "title": "Endpoint Url",
+            "type": "string"
+          },
+          "signing_secret_set": {
+            "default": false,
+            "title": "Signing Secret Set",
+            "type": "boolean"
+          },
+          "workspaces_connected": {
+            "default": 0,
+            "title": "Workspaces Connected",
+            "type": "integer"
+          },
+          "events_deduplicated": {
+            "default": 0,
+            "title": "Events Deduplicated",
+            "type": "integer"
+          },
+          "ready": {
+            "default": false,
+            "title": "Ready",
+            "type": "boolean"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "state": {
+            "default": "",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "title": "InboundStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.connect_events",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
     }
   ],
   "signals": [],
   "schedules": [],
   "required_scopes": [],
   "icon_size_bytes": 374,
+  "webhooks": [
+    {
+      "path": "/events",
+      "method": "POST",
+      "secret_header": ""
+    }
+  ],
+  "events": {
+    "subscribes": [],
+    "emits": [
+      {
+        "type": "slack-connector.dm_received"
+      },
+      {
+        "type": "slack-connector.thread_reply_received"
+      },
+      {
+        "type": "slack-connector.app_mentioned"
+      },
+      {
+        "type": "slack-connector.message_received"
+      }
+    ]
+  },
   "lifecycle": {
     "on_install": true,
     "health_check": {
@@ -2516,6 +3282,15 @@
       "required": true,
       "write_mode": "both",
       "max_bytes": 4096,
+      "scope": "user",
+      "rotation_hint_days": 180
+    },
+    {
+      "name": "slack_signing_secret",
+      "description": "Slack signing secret — proves an inbound event really came from Slack. Find it at api.slack.com/apps → your app → Basic Information → App Credentials → Signing Secret. Needed only for inbound events; sending and reading work without it.",
+      "required": false,
+      "write_mode": "both",
+      "max_bytes": 256,
       "scope": "user",
       "rotation_hint_days": 180
     }

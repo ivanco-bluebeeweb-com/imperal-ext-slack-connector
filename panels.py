@@ -49,6 +49,7 @@ from app import ext
 # needs to add a SECOND workspace token on its own line).
 _SECRETS_ROUTE = f"/ext/{ext.app_id}/secrets#{acc.SECRET_NAME}"
 _SLACK_APPS_URL = "https://api.slack.com/apps"
+_SIGNING_SECRET_NAME = "slack_signing_secret"
 
 # Recommended scopes. Stated explicitly because Slack's app creation screen
 # offers dozens and picking wrong means reinstalling later -- and because a
@@ -56,6 +57,17 @@ _SLACK_APPS_URL = "https://api.slack.com/apps"
 _BOT_SCOPES = ("channels:read, groups:read, im:read, mpim:read, "
                "channels:history, groups:history, users:read, chat:write, "
                "reactions:write, pins:write")
+
+# Scopes that INBOUND specifically needs, listed separately because they are the
+# ones people miss: an event subscription with no matching scope is accepted by
+# Slack's UI and then delivers nothing at all, with no error anywhere.
+_HISTORY_SCOPES = (
+    "app_mentions:read   — receive @-mentions of the app\n"
+    "channels:history    — messages in PUBLIC channels\n"
+    "groups:history      — messages in PRIVATE channels\n"
+    "im:history          — direct messages to the app\n"
+    "users:read          — turn a user id into a display name"
+)
 
 
 def _connect_view(records: list[dict]) -> ui.Component:
@@ -134,6 +146,147 @@ def _connect_view(records: list[dict]) -> ui.Component:
         ui.Button(label="Check what is reachable",
                   on_click=ui.Call("__panel__slack", view="workspaces",
                                    refresh=True)),
+    ]))
+
+    return ui.Stack(direction="vertical", gap=4, children=children)
+
+
+def _events_view(records: list[dict], secret_set: bool,
+                 endpoint_url: str) -> ui.Component:
+    """Set up INBOUND events: the endpoint URL, the secret, the subscriptions.
+
+    Its own view because inbound setup happens in the SLACK console, not here,
+    and the user needs three things in front of them at once: the URL to paste,
+    the secret to copy back, and the exact list of events to tick. Splitting
+    those across screens is how a half-configured endpoint happens -- and a
+    half-configured endpoint fails silently, which is the worst outcome to
+    debug.
+
+    SKETCH -- events view
+      ui.Stack (v, gap=4)
+        ui.Header(text="Incoming Slack events", level=2, subtitle=...)
+        ui.Alert(...)                          -- ready / not ready
+        ui.Section("1. Request URL")     [ui.Text, ui.Code, ui.Text]
+        ui.Section("2. Signing secret")  [ui.Text, ui.Form(Password), ui.Link]
+        ui.Section("3. Subscribe")       [ui.Text, ui.Code, ui.Text]
+        ui.Section("4. Scopes")          [ui.Text, ui.Code, ui.Text]
+        ui.Section("What Webbee then sees") [ui.Text, ui.Code]
+    """
+    usable = [r for r in records if r.get("status") == "ok"]
+    ready = bool(secret_set and usable)
+
+    children: list = [
+        ui.Header(text="Incoming Slack events", level=2,
+                  subtitle="Let Webbee see messages, mentions and thread "
+                           "replies — and answer in the right place."),
+    ]
+
+    if ready:
+        children.append(ui.Alert(
+            message=("Inbound is configured. Mention the app in a channel it "
+                     "belongs to and the event reaches Imperal."),
+            type="success"))
+    elif not usable:
+        children.append(ui.Alert(
+            message=("Connect a workspace token first — an inbound event still "
+                     "needs a token to look up who wrote it and to reply."),
+            type="warning"))
+    else:
+        children.append(ui.Alert(
+            message=("The signing secret is not set yet, so every incoming "
+                     "delivery is refused. Step 2 below fixes that."),
+            type="warning"))
+
+    children.append(ui.Section(title="1. Paste this Request URL into Slack",
+                               children=[
+        ui.Text(content=(
+            "In Slack → your app → Event Subscriptions, switch Enable Events "
+            "on and paste this as the Request URL."),
+            variant="body"),
+        ui.Code(content=endpoint_url, language="text"),
+        ui.Text(content=(
+            "Slack immediately calls it once to verify ownership. That "
+            "challenge is answered automatically — you should see 'Verified' "
+            "straight away. If you do not, the app is not deployed yet."),
+            variant="caption"),
+    ]))
+
+    children.append(ui.Section(title="2. Paste the signing secret back here",
+                               children=[
+        ui.Text(content=(
+            "Slack signs every delivery with this secret, and the connector "
+            "refuses anything that is not correctly signed — otherwise anyone "
+            "who learned the URL above could fake messages from your team."),
+            variant="body"),
+        ui.Text(content=(
+            "Find it in Slack → your app → Basic Information → App "
+            "Credentials → Signing Secret (press Show). It is NOT the xoxb- "
+            "token."),
+            variant="caption"),
+        ui.Form(
+            action="connect_events",
+            submit_label="Save signing secret" if not secret_set
+                         else "Replace signing secret",
+            children=[ui.Password(placeholder="32-character secret",
+                                  param_name="signing_secret")],
+        ),
+    ]))
+
+    children.append(ui.Section(title="3. Subscribe to these bot events",
+                               children=[
+        ui.Text(content=(
+            "Still on Event Subscriptions, open 'Subscribe to bot events' and "
+            "add these four. Each one is a different way a person can talk to "
+            "the app:"),
+            variant="body"),
+        ui.Code(content=("app_mention        — someone @-mentions the app\n"
+                         "message.channels   — public channel messages\n"
+                         "message.groups     — private channel messages\n"
+                         "message.im         — direct messages to the app"),
+                language="text"),
+        ui.Text(content=(
+            "Thread replies arrive through these same subscriptions; Slack has "
+            "no separate 'reply' event. The connector tells a reply from a new "
+            "message itself."),
+            variant="caption"),
+    ]))
+
+    children.append(ui.Section(title="4. Scopes — and why a reinstall may be "
+                                     "needed", children=[
+        ui.Text(content=(
+            "Subscribing to an event Slack has no scope for silently delivers "
+            "nothing. These are the history scopes inbound needs:"),
+            variant="body"),
+        ui.Code(content=_HISTORY_SCOPES, language="text"),
+        ui.Text(content=(
+            "Adding a scope in OAuth & Permissions requires reinstalling the "
+            "app to the workspace, and reinstalling issues a NEW token — paste "
+            "it on the Connect screen afterwards, or the connector keeps using "
+            "the old one."),
+            variant="caption"),
+    ]))
+
+    children.append(ui.Section(title="What Webbee then sees", children=[
+        ui.Text(content=(
+            "Each accepted message raises one of these events, ready to use as "
+            "an automation trigger:"),
+            variant="body"),
+        ui.Code(content=("slack-connector.message_received\n"
+                         "slack-connector.app_mentioned\n"
+                         "slack-connector.thread_reply_received\n"
+                         "slack-connector.dm_received"),
+                language="text"),
+        ui.Text(content=(
+            "Every event carries the workspace, channel, author, text and the "
+            "thread to answer in — so a reply lands in the same thread the "
+            "person wrote in, not at the bottom of the channel."),
+            variant="caption"),
+        ui.Stack(direction="horizontal", gap=2, children=[
+            ui.Button(label="Refresh",
+                      on_click=ui.Call("__panel__slack", view="events")),
+            ui.Button(label="Back to workspaces", variant="secondary",
+                      on_click=ui.Call("__panel__slack", view="workspaces")),
+        ]),
     ]))
 
     return ui.Stack(direction="vertical", gap=4, children=children)
@@ -231,6 +384,8 @@ def _workspaces_view(records: list[dict], load_failed: bool) -> ui.Component:
             ui.Button(label="Refresh",
                       on_click=ui.Call("__panel__slack", view="workspaces",
                                        refresh=True)),
+            ui.Button(label="Set up incoming events", variant="secondary",
+                      on_click=ui.Call("__panel__slack", view="events")),
             ui.Button(label="Connect another workspace", variant="secondary",
                       on_click=ui.Call("__panel__slack", view="connect")),
         ]),
@@ -262,11 +417,25 @@ async def slack_center(ctx, **kwargs):
         await ctx.log("slack panel failed to load workspaces", "error")
         load_failed = True
 
-    if view not in ("connect", "workspaces"):
+    if view not in ("connect", "workspaces", "events"):
         view = "workspaces" if records else "connect"
 
     if view == "connect":
         return _connect_view(records)
+    if view == "events":
+        # Read as a boolean only. The secret's VALUE must never reach the
+        # markup -- the panel says whether it is set, never what it is.
+        secret_set = False
+        try:
+            secret_set = bool(await ctx.secrets.get(_SIGNING_SECRET_NAME))
+        except Exception:
+            secret_set = False
+        try:
+            url = ctx.webhook_url("events")
+        except Exception:
+            url = (f"https://panel.imperal.io/v1/ext/{ext.app_id}"
+                   "/webhook/events")
+        return _events_view(records, secret_set, url)
     return _workspaces_view(records, load_failed)
 
 

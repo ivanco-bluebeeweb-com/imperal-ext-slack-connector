@@ -171,3 +171,92 @@ async def test_no_panel_leaks_a_token_into_its_markup(connected_ctx, http):
     http.push(auth_test_payload(team="Acme"))
     assert FAKE_BOT_TOKEN not in _dump(
         await panels.slack_center(connected_ctx))
+
+
+# --- the inbound events view -------------------------------------------------
+# Its own block because this view's job is to carry FACTS the user must copy
+# into Slack. A view that renders but shows the wrong URL, or omits a scope, is
+# indistinguishable from a working one on screen -- and produces an endpoint
+# that is silently never called.
+
+SIGNING_SECRET_VALUE = "abcdef0123456789abcdef0123456789"
+
+
+async def test_the_events_view_shows_the_endpoint_url_to_paste(connected_ctx,
+                                                               http):
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+    # The path is what Slack must call. Built by the SDK from the kernel app id,
+    # never hardcoded here -- so this asserts the SHAPE, not a literal host.
+    assert "/webhook/events" in dump
+
+
+async def test_the_events_view_form_posts_to_this_extensions_own_function(
+        connected_ctx, http):
+    """A panel action resolves against THIS extension's functions.
+
+    Pointing the form at `save_app_secret` (the developer extension) is the
+    documented trap: it fails at click time with "Function not found".
+    """
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+    assert "connect_events" in dump
+    assert "save_app_secret" not in dump
+
+
+async def test_the_events_view_lists_every_scope_inbound_needs(connected_ctx,
+                                                              http):
+    """A missing history scope delivers NOTHING, with no error anywhere."""
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+    for scope in ("app_mentions:read", "channels:history", "groups:history",
+                  "im:history", "users:read"):
+        assert scope in dump, f"{scope} not shown to the user"
+
+
+async def test_the_events_view_lists_the_slack_subscriptions_to_tick(
+        connected_ctx, http):
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+    for subscription in ("app_mention", "message.channels", "message.groups",
+                         "message.im"):
+        assert subscription in dump
+
+
+async def test_the_events_view_names_the_imperal_events_for_rule_building(
+        connected_ctx, http):
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+    for event in ("slack-connector.message_received",
+                  "slack-connector.app_mentioned",
+                  "slack-connector.thread_reply_received",
+                  "slack-connector.dm_received"):
+        assert event in dump
+
+
+async def test_the_events_view_warns_when_the_signing_secret_is_missing(
+        connected_ctx, http):
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+    assert "warning" in dump.lower()
+
+
+async def test_the_events_view_never_shows_the_signing_secret_back(ctx, http):
+    """Set/not-set is the ONLY thing the panel may reveal about a secret."""
+    from imperal_sdk.testing import MockSecretStore
+    from conftest import auth_test_payload
+
+    ctx.secrets = MockSecretStore({
+        "slack_tokens": FAKE_BOT_TOKEN,
+        "slack_signing_secret": SIGNING_SECRET_VALUE,
+    })
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(ctx, view="events"))
+    assert SIGNING_SECRET_VALUE not in dump
+    assert FAKE_BOT_TOKEN not in dump

@@ -80,6 +80,41 @@ class ReadThreadParams(WorkspaceScoped):
         50, ge=1, le=200, description="Maximum replies to return")
 
 
+class FetchMessageParams(WorkspaceScoped):
+    """Read ONE message by ts -- the message a Slack event pointed at."""
+    channel: str = Field(
+        ..., description="Channel name or id the message is in. Pass the "
+                         "channel_id straight from the Slack event.")
+    ts: str = Field(
+        ..., description="Timestamp of the message, as text — the message_ts "
+                         "from the event. Never pass it as a number: a float "
+                         "loses precision and Slack stops recognising it.")
+
+
+class FetchThreadContextParams(WorkspaceScoped):
+    """Read a whole thread, so a reply can answer the conversation."""
+    channel: str = Field(
+        ..., description="Channel name or id the thread lives in. Pass the "
+                         "channel_id straight from the Slack event.")
+    thread_ts: str = Field(
+        ..., description="Thread timestamp as text — the thread_ts or "
+                         "reply_thread_ts from the event.")
+    limit: int = Field(
+        50, ge=1, le=200, description="Maximum messages to return")
+
+
+class InboundStatusParams(BaseModel):
+    """No inputs: it reports on configuration, which is not parameterised."""
+
+
+class ConnectEventsParams(BaseModel):
+    """Save the Slack signing secret that authenticates inbound deliveries."""
+    signing_secret: str = Field(
+        ..., description="The app's Signing Secret from Slack → Basic "
+                         "Information → App Credentials. A 32-character hex "
+                         "string; NOT the bot token.")
+
+
 class SearchMessagesParams(WorkspaceScoped):
     query: str = Field(
         ..., description="Search text. Slack modifiers work too, e.g. "
@@ -114,6 +149,13 @@ class SendMessageParams(WorkspaceScoped):
     reply_broadcast: bool = Field(
         False,
         description="When replying in a thread, also show the reply in the channel")
+    reply_to_last_thread: bool = Field(
+        False,
+        description="Answer in the thread where this channel's most recent "
+                    "inbound Slack message arrived. Use this when replying to "
+                    "a Slack event (a mention or a thread reply) and you do "
+                    "not have the thread_ts to hand — the connector remembers "
+                    "it. Ignored when thread_ts is given explicitly.")
     unfurl_links: bool = Field(
         True, description="Let Slack expand link previews")
 
@@ -210,6 +252,20 @@ class _Named(sdl.Entity):
         return self
 
 
+class InboundStatus(_Named):
+    """Whether the Slack events endpoint is ready to receive."""
+    endpoint_url: str = ""
+    signing_secret_set: bool = False
+    workspaces_connected: int = 0
+    events_deduplicated: int = 0
+    ready: bool = False
+    detail: str = ""
+    state: str = ""
+
+    _id_field: ClassVar[str] = "endpoint_url"
+    _title_field: ClassVar[str] = "state"
+
+
 class WorkspaceRecord(_Named):
     """One connected Slack workspace and whether its token still works."""
     workspace_name: str = ""
@@ -277,6 +333,9 @@ class MessageList(_Named):
     count: int = 0
     has_more: bool = False
     note: str = ""
+    # Set when the list IS a thread, so a consumer can reply into it without
+    # having to dig the ts back out of the first message.
+    thread_ts: str = ""
 
     _id_field: ClassVar[str] = "channel_id"
     _title_field: ClassVar[str] = "channel"

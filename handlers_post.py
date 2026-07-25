@@ -11,6 +11,7 @@ from __future__ import annotations
 from imperal_sdk import ActionResult
 
 import accounts as acc
+import inbound
 import shared
 import slack_client as sc
 import slack_objects as so
@@ -133,6 +134,31 @@ async def send_message(ctx, params: SendMessageParams) -> ActionResult:
     body: dict = {"channel": target["id"], "text": text,
                   "unfurl_links": params.unfurl_links}
     thread_ts = (params.thread_ts or "").strip()
+
+    # ANSWERING WHERE THE USER ACTUALLY WROTE.
+    #
+    # When an inbound Slack event triggers a reply, the thread_ts belongs to
+    # that event -- but it has to survive the trip through an automation prompt
+    # to get here, and a model asked to carry a 16-digit timestamp verbatim
+    # will eventually paraphrase it. A paraphrased ts is one Slack does not
+    # recognise: the reply lands in the channel instead of the thread, or
+    # vanishes. So the connector remembers the thread itself, keyed by channel,
+    # and can look it back up.
+    #
+    # OPT-IN, not automatic. Threading every send into the last remembered
+    # thread would bury an unrelated "post this to #general" inside an old
+    # conversation -- a wrong-place message with no undo. The caller has to ask.
+    auto_note = ""
+    if not thread_ts and params.reply_to_last_thread:
+        remembered = await inbound.recall_reply_target(ctx, target["id"])
+        thread_ts = str(remembered.get("reply_thread_ts") or "").strip()
+        if thread_ts:
+            who = remembered.get("last_user_name") or "the last message"
+            auto_note = f" (threaded under {who})"
+        else:
+            auto_note = (" (no inbound thread remembered for this channel — "
+                         "posted at top level)")
+
     if thread_ts:
         body["thread_ts"] = thread_ts
         if params.reply_broadcast:
@@ -146,8 +172,8 @@ async def send_message(ctx, params: SendMessageParams) -> ActionResult:
     ts = str(data.get("ts") or "")
     where = shared.channel_label(target)
     return ActionResult.success(
-        summary=(f"Replied in the thread in {where}." if thread_ts
-         else f"Sent to {where}."),
+        summary=((f"Replied in the thread in {where}{auto_note}." if thread_ts
+                  else f"Sent to {where}{auto_note}.")),
         data=MessageAck(channel=target["name"], channel_id=target["id"], ts=ts,
                         action="replied" if thread_ts else "sent",
                         detail=so.humanize_ts(ts)))

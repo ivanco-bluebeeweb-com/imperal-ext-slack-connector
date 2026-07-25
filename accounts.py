@@ -116,6 +116,11 @@ def _record_for(token: str, info: dict, index: int) -> dict:
         "workspace_id": info.get("workspace_id") or "",
         "identity": info.get("identity") or "",
         "identity_id": info.get("identity_id") or "",
+        # Carried through because inbound events need it: it is how the app
+        # recognises ITS OWN messages coming back from Slack. auth.test already
+        # returns it, and dropping it here is what would let the app answer its
+        # own answer in a public channel, forever.
+        "bot_id": info.get("bot_id") or "",
         "token_kind": info.get("token_kind") or sc.token_kind(token),
         "url": info.get("url") or "",
         "status": "ok",
@@ -155,7 +160,13 @@ async def list_workspaces(ctx, refresh: bool = False) -> list[dict]:
         except Exception:
             cached = []
         if isinstance(cached, list) and len(cached) == len(tokens):
-            return [dict(item) for item in cached]
+            # store.list returns Document dataclasses, and the record lives in
+            # `.data` -- dict(document) raises, which would have turned a cache
+            # HIT into an exception on the read path.
+            rows = [getattr(doc, "data", None) or {} for doc in cached]
+            if all(isinstance(row, dict) and row.get("workspace_name")
+                   for row in rows):
+                return rows
 
     records: list[dict] = []
     for index, token in enumerate(tokens):
@@ -177,10 +188,24 @@ async def list_workspaces(ctx, refresh: bool = False) -> list[dict]:
             })
 
     try:
-        await ctx.store.clear(WORKSPACES_COLLECTION)
+        # store has NO put()/clear() -- the real API is set("collection/doc_id")
+        # for an upsert and delete(collection, doc_id) for removal. Calling the
+        # names that do not exist raised AttributeError into the except below,
+        # so the cache silently NEVER populated: every call re-ran auth.test per
+        # token. It looked fine because the failure only logged a warning.
+        stale = []
+        try:
+            stale = await ctx.store.list(WORKSPACES_COLLECTION)
+        except Exception:
+            stale = []
+        keep = {str(record["line"]) for record in records}
+        for doc in stale or []:
+            doc_id = getattr(doc, "id", None) or ""
+            if doc_id and doc_id not in keep:
+                await ctx.store.delete(WORKSPACES_COLLECTION, doc_id)
         for record in records:
-            await ctx.store.put(WORKSPACES_COLLECTION,
-                                str(record["line"]), record)
+            await ctx.store.set(
+                f"{WORKSPACES_COLLECTION}/{record['line']}", record)
     except Exception:
         # The cache is an optimisation; failing to write it must not fail the
         # call the user actually asked for.
