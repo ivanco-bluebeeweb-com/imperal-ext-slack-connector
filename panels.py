@@ -70,6 +70,21 @@ _HISTORY_SCOPES = (
 )
 
 
+async def _signing_secret_is_set(ctx) -> bool:
+    """Whether the signing secret exists -- as a BOOLEAN, never the value.
+
+    One helper because three surfaces now need this fact (events view, default
+    view, sidebar), and each one reading the secret itself is three chances to
+    leak it into markup or to crash a panel on an unreadable store. A panel has
+    no error surface: an exception here renders an empty box, so an unreadable
+    store must degrade to "not set" rather than propagate.
+    """
+    try:
+        return bool(await ctx.secrets.get(_SIGNING_SECRET_NAME))
+    except Exception:
+        return False
+
+
 def _connect_view(records: list[dict]) -> ui.Component:
     """The screen a first-time user lands on: paste a token, in three steps.
 
@@ -292,7 +307,8 @@ def _events_view(records: list[dict], secret_set: bool,
     return ui.Stack(direction="vertical", gap=4, children=children)
 
 
-def _workspaces_view(records: list[dict], load_failed: bool) -> ui.Component:
+def _workspaces_view(records: list[dict], load_failed: bool,
+                     inbound_ready: bool = True) -> ui.Component:
     """Connected workspaces, plus the membership rules that explain emptiness.
 
     SKETCH -- workspaces view
@@ -331,6 +347,22 @@ def _workspaces_view(records: list[dict], load_failed: bool) -> ui.Component:
                 "reinstalling issues a NEW token. Paste the current one to fix "
                 "it."),
             type="warning"))
+
+    # Inbound off is INVISIBLE otherwise: the workspace row looks healthy,
+    # sending works, and the only symptom is that Webbee never reacts to
+    # anything -- which reads as "the assistant is ignoring me", not as a
+    # missing setting. Said here, on the screen people actually land on,
+    # because the events view can only help someone who already opened it.
+    if records and not inbound_ready:
+        children.append(ui.Alert(
+            message=("Webbee is not receiving Slack messages. Sending works, "
+                     "but nothing in Slack can reach her until the signing "
+                     "secret is set -- so she cannot notice a mention or "
+                     "reply on her own."),
+            type="warning"))
+        children.append(ui.Button(
+            label="Set up incoming events",
+            on_click=ui.Call("__panel__slack", view="events")))
 
     rows = [
         {
@@ -425,18 +457,15 @@ async def slack_center(ctx, **kwargs):
     if view == "events":
         # Read as a boolean only. The secret's VALUE must never reach the
         # markup -- the panel says whether it is set, never what it is.
-        secret_set = False
-        try:
-            secret_set = bool(await ctx.secrets.get(_SIGNING_SECRET_NAME))
-        except Exception:
-            secret_set = False
+        secret_set = await _signing_secret_is_set(ctx)
         try:
             url = ctx.webhook_url("events")
         except Exception:
             url = (f"https://panel.imperal.io/v1/ext/{ext.app_id}"
                    "/webhook/events")
         return _events_view(records, secret_set, url)
-    return _workspaces_view(records, load_failed)
+    return _workspaces_view(records, load_failed,
+                            inbound_ready=await _signing_secret_is_set(ctx))
 
 
 @ext.panel("slack_nav", slot="left", title="Slack", icon="MessageSquare",
@@ -464,6 +493,16 @@ async def slack_nav(ctx, **kwargs):
     if len(healthy) != len(records):
         children.append(ui.Text(
             content="A token needs attention.", variant="caption"))
+    # Two different failures, two different cures, so they are never merged
+    # into one vague "needs attention": a bad token breaks SENDING, a missing
+    # signing secret breaks RECEIVING. Naming the wrong one sends the user to
+    # re-paste a token that was fine all along.
+    if not await _signing_secret_is_set(ctx):
+        children.append(ui.Text(
+            content="Incoming events: off", variant="caption"))
+        children.append(ui.Button(
+            label="Turn on incoming", variant="secondary",
+            on_click=ui.Call("__panel__slack", view="events")))
     children.append(ui.Button(
         label="Open", on_click=ui.Call("__panel__slack", view="workspaces")))
 

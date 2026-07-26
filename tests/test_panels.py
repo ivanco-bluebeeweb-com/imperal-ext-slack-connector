@@ -260,3 +260,68 @@ async def test_the_events_view_never_shows_the_signing_secret_back(ctx, http):
     dump = _dump(await panels.slack_center(ctx, view="events"))
     assert SIGNING_SECRET_VALUE not in dump
     assert FAKE_BOT_TOKEN not in dump
+
+
+# --- inbound state must be visible WITHOUT hunting for it --------------------
+# The events view is excellent once you reach it. The bug this block guards is
+# that you had no reason to reach it: a workspace connects fine, sending works,
+# and nothing anywhere says inbound is dead. That is the silent half-configured
+# endpoint the events view docstring itself warns about -- so the warning has to
+# live on the screen people actually land on.
+
+async def test_workspaces_view_warns_when_inbound_is_not_configured(
+        connected_ctx, http):
+    """Connected + no signing secret = Webbee cannot see a single message."""
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    tree = await panels.slack_center(connected_ctx, view="workspaces")
+    # A BUTTON labelled "Set up incoming events" already existed and is not
+    # enough: it reads as an optional extra, not as "this is switched off".
+    # The property under test is that an ALERT states the current state.
+    alerts = [n for n in _flatten(tree) if n.type == "Alert"]
+    said = " ".join(str(a.props.get("message", "")) for a in alerts).lower()
+    assert "not receiving" in said, (
+        "the default screen never warns that inbound is unconfigured, so a "
+        "user has no idea events are dead")
+
+
+async def test_workspaces_view_is_quiet_once_inbound_is_configured(ctx, http):
+    """No nagging when it is actually set up -- a banner that never clears
+    trains people to ignore banners."""
+    from imperal_sdk.testing import MockSecretStore
+    from conftest import auth_test_payload
+
+    ctx.secrets = MockSecretStore({
+        "slack_tokens": FAKE_BOT_TOKEN,
+        "slack_signing_secret": SIGNING_SECRET_VALUE,
+    })
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_center(ctx, view="workspaces"))
+    assert "not receiving" not in dump.lower()
+
+
+async def test_nav_shows_inbound_is_off(connected_ctx, http):
+    """The sidebar is the always-visible surface; state belongs there."""
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+    dump = _dump(await panels.slack_nav(connected_ctx))
+    assert "event" in dump.lower()
+
+
+async def test_workspaces_view_survives_an_unreadable_secret_store(
+        connected_ctx, http):
+    """Reading the secret must never turn the main screen into an empty box."""
+    from conftest import auth_test_payload
+
+    class Boom:
+        async def get(self, *a, **k):
+            raise RuntimeError("store down")
+
+        async def set(self, *a, **k):
+            raise RuntimeError("store down")
+
+    http.push(auth_test_payload(team="Acme"))
+    records = await panels.acc.list_workspaces(connected_ctx)
+    connected_ctx.secrets = Boom()
+    assert _types(await panels.slack_center(connected_ctx, view="workspaces"))
+    assert records is not None
