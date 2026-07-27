@@ -257,7 +257,10 @@ async def check_access(ctx, params: CheckAccessParams) -> ActionResult:
                         "not expose it to bot tokens at all.")
 
     report = AccessReport(
-        workspace_name=str(info.get("team") or ""),
+        # `identify` returns workspace_name, not Slack's raw "team" key: reading
+        # "team" here is why the live report showed an empty workspace name while
+        # the token was perfectly healthy.
+        workspace_name=str(info.get("workspace_name") or ""),
         identity=str(info.get("identity") or ""),
         token_kind=kind,
         channels_visible=len(visible),

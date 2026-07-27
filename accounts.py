@@ -98,6 +98,9 @@ async def identify(ctx, token: str) -> dict:
     data = out["data"]
     return {
         "ok": True,
+        # From the response HEADER, not the body: auth.test has no scopes field.
+        # Without this the scope checks in check_access could never fire.
+        "scopes": str(out.get("scopes") or ""),
         "workspace_name": str(data.get("team") or ""),
         "workspace_id": str(data.get("team_id") or ""),
         "identity": str(data.get("user") or ""),

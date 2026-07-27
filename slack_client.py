@@ -295,6 +295,30 @@ def retry_after_seconds(resp) -> int:
         return 0
 
 
+def granted_scopes(resp) -> str:
+    """The scopes Slack says this token actually has, from `X-OAuth-Scopes`.
+
+    Slack reports granted scopes in a RESPONSE HEADER, not in the JSON body --
+    `auth.test` has no `scopes` field at all. Reading it from the body is why
+    check_access showed an empty scope list, which in turn made three scope
+    warnings there dead code: each was guarded by `if scopes and ...`, so with
+    scopes permanently empty none could ever fire.
+
+    That is the failure worth catching: subscribing to a Slack event without the
+    matching history scope delivers NOTHING, with no error anywhere. Silence is
+    the symptom, so the scope list has to be a fact we can actually see.
+
+    Case-insensitive for the same reason as Retry-After: header dict casing is
+    not guaranteed across HTTP clients.
+    """
+    headers = getattr(resp, "headers", None) or {}
+    for key, value in headers.items():
+        if str(key).lower() == "x-oauth-scopes":
+            return ",".join(
+                part.strip() for part in str(value).split(",") if part.strip())
+    return ""
+
+
 def fail(code: str, error: str = "") -> dict:
     """Build the module's error envelope with a stable code."""
     return {"ok": False, "code": code, "retryable": is_retryable(code),
@@ -380,7 +404,9 @@ async def request(ctx, method: str, path: str, token: str, *,
             out["retry_after"] = hint
         return out
 
-    return {"ok": True, "data": body}
+    # Scopes ride along on the envelope, not inside `data`: they describe the
+    # TOKEN, not the endpoint's answer, and only the header carries them.
+    return {"ok": True, "data": body, "scopes": granted_scopes(resp)}
 
 
 def _extract_cursor(data: dict) -> str:

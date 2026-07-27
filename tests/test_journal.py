@@ -16,6 +16,7 @@ broken and the test was confirmed to fail. A test that has never been seen red
 proves only that it runs.
 """
 
+import handlers_directory as hd
 import handlers_journal as hj
 import inbound
 import journal
@@ -651,3 +652,92 @@ def test_the_membership_note_offers_the_self_join_before_the_chore():
     assert "/invite" in note and "rivate" in note
     # And the DM correction must not regress.
     assert "NO invite" in note
+
+
+async def test_check_access_reports_the_scopes_slack_actually_granted(
+        connected_ctx, http):
+    """Slack puts granted scopes in a HEADER, not in the auth.test body.
+
+    Reading them from the body meant the scope list was permanently empty --
+    which made three scope warnings in check_access DEAD CODE: each is guarded
+    by `if scopes and ...`, so with scopes always empty none could ever fire.
+
+    That is the failure worth catching, because subscribing to a Slack event
+    without the matching history scope delivers NOTHING and reports no error
+    anywhere. Silence is the only symptom, so the scope list has to be real.
+    """
+    http.push(auth_test_payload(team="Acme"))          # resolve workspace
+    http.push(auth_test_payload(team="Acme"),          # identify
+              headers={"x-oauth-scopes":
+                       "app_mentions:read,channels:history,chat:write"})
+    http.push(ok(channels=[]))
+
+    result = await hd.check_access(connected_ctx, hd.CheckAccessParams())
+
+    assert result.status == "success", result.error
+    assert "channels:history" in result.data.granted_scopes, \
+        f"granted scopes came back as {result.data.granted_scopes!r}"
+
+
+async def test_check_access_warns_when_a_history_scope_is_missing(
+        connected_ctx, http):
+    """The whole point of reading scopes: say so BEFORE the silence.
+
+    A readable channel is supplied deliberately. With no channels at all the
+    report already says "reading history or posting (the app is in no channel)",
+    and an assertion on the word "history" passes on THAT sentence -- which is
+    how the first version of this test stayed green while the scope warning was
+    deleted. Sabotage caught it; the assertion now names the scope.
+    """
+    http.push(auth_test_payload(team="Acme"))          # resolve workspace
+    http.push(auth_test_payload(team="Acme"),          # identify
+              headers={"x-oauth-scopes": "app_mentions:read,chat:write"})
+    http.push(ok(channels=[
+        channel_payload(channel_id="C1", name="general", is_member=True),
+    ]))
+
+    result = await hd.check_access(connected_ctx, hd.CheckAccessParams())
+
+    assert result.status == "success", result.error
+    gaps = result.data.missing_for_common_tasks
+    assert "channels:history" in gaps, \
+        f"a missing history scope was not reported: {gaps!r}"
+
+
+async def test_check_access_names_the_workspace(connected_ctx, http):
+    """It read Slack's raw "team" key, which `identify` does not return.
+
+    The live report showed an empty workspace name on a perfectly healthy
+    token -- cosmetic, but it is the field a human uses to confirm they are
+    looking at the right workspace.
+    """
+    http.push(auth_test_payload(team="Acme"))          # resolve workspace
+    http.push(auth_test_payload(team="Acme"),          # identify
+              headers={"x-oauth-scopes": "chat:write"})
+    http.push(ok(channels=[]))
+
+    result = await hd.check_access(connected_ctx, hd.CheckAccessParams())
+
+    assert result.status == "success", result.error
+    assert result.data.workspace_name == "Acme", \
+        f"workspace name came back as {result.data.workspace_name!r}"
+
+
+async def test_check_access_warns_when_it_cannot_post(connected_ctx, http):
+    """Missing chat:write means Webbee can read but never answer.
+
+    Same class as the history scope: Slack reports no error for a scope the app
+    never had, so the only symptom is a reply that silently does not appear.
+    """
+    http.push(auth_test_payload(team="Acme"))          # resolve workspace
+    http.push(auth_test_payload(team="Acme"),          # identify
+              headers={"x-oauth-scopes": "app_mentions:read,channels:history"})
+    http.push(ok(channels=[
+        channel_payload(channel_id="C1", name="general", is_member=True),
+    ]))
+
+    result = await hd.check_access(connected_ctx, hd.CheckAccessParams())
+
+    assert result.status == "success", result.error
+    gaps = result.data.missing_for_common_tasks
+    assert "chat:write" in gaps, f"inability to post was not reported: {gaps!r}"
