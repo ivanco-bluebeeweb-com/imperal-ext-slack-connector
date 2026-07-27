@@ -355,3 +355,67 @@ async def test_check_access_counts_dms_as_readable(connected_ctx, http):
     assert "no invite" in report.explanation.lower()
     # A reachable DM means history/posting is NOT listed as a gap.
     assert "no channel" not in report.missing_for_common_tasks
+
+
+# --- the hourly sweep --------------------------------------------------------
+
+def test_the_sweep_is_actually_scheduled():
+    """Awareness must not depend on somebody remembering to ask.
+
+    Without a schedule the journal is an archive you consult, not awareness that
+    keeps itself current -- and the difference is invisible until the moment
+    someone expects Webbee to already know.
+    """
+    import main  # noqa: F401  (registers decorators)
+    from app import ext
+
+    assert "slack_catch_up" in ext.schedules, "the sweep does not run on its own"
+    cron = ext.schedules["slack_catch_up"].cron
+    assert len(cron.split()) == 5, f"not a cron expression: {cron!r}"
+    # Not every minute: this polls somebody else's API forever.
+    assert not cron.startswith("*"), f"sweeping too often: {cron!r}"
+
+
+async def test_the_scheduled_sweep_records_messages(connected_ctx, http):
+    """The schedule must reach the same journal the tool writes to."""
+    http.push(auth_test_payload())                 # resolve workspace
+    http.push(ok(channels=[_dm(channel_id="D1")]))  # conversations.list
+    http.push(ok(members=[user_payload(user_id="U024BE7LH", name="vlad")]))
+    http.push(ok(channels=[]))                     # name_maps channels
+    http.push(ok(messages=[
+        message_payload(ts="1690000500.1", text="are you there?",
+                        user="U024BE7LH"),
+    ]))
+
+    await hj.scheduled_catch_up(connected_ctx)
+
+    rows = await journal.recent(connected_ctx, limit=5)
+    assert len(rows) == 1, "the scheduled sweep recorded nothing"
+    assert rows[0]["text"] == "are you there?"
+    assert rows[0]["source"] == journal.SOURCE_SWEEP
+
+
+async def test_the_scheduled_sweep_never_raises(connected_ctx, http, monkeypatch):
+    """A throwing scheduled task gets retried or disabled -- neither helps.
+
+    The next hourly pass recovers anything missed, because the cursor only
+    advances on success. So swallowing costs nothing and keeps the schedule
+    alive, while propagating could switch awareness off entirely.
+
+    The exception is forced by making the sweep itself explode. An earlier
+    version of this test just starved the HTTP queue and passed even with the
+    guard deleted -- sabotage exposed that: catch_up returns an error RESULT
+    rather than raising, so nothing was ever thrown and the test proved nothing.
+    """
+    async def exploding_sweep(*_a, **_kw):
+        raise RuntimeError("slack unreachable")
+
+    monkeypatch.setattr(hj, "catch_up", exploding_sweep)
+
+    await hj.scheduled_catch_up(connected_ctx)  # must simply return
+
+
+async def test_the_scheduled_sweep_tolerates_a_dead_slack(connected_ctx, http):
+    """No usable Slack response must not become a crashing background task."""
+    # Nothing queued: every Slack call fails.
+    await hj.scheduled_catch_up(connected_ctx)

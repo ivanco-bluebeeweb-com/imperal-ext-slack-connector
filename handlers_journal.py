@@ -31,7 +31,7 @@ import journal
 import shared
 import slack_client as sc
 import slack_objects as so
-from app import chat
+from app import chat, ext
 from models import (
     CatchUpParams,
     InboundLog,
@@ -343,3 +343,45 @@ async def list_inbound(ctx, params: ListInboundParams) -> ActionResult:
         f"{len(messages)} recorded Slack message(s){filter_note}; "
         f"{totals['total']} remembered in total."
         + (f" {note}" if note else ""))
+
+
+# --- the sweep, running on its own ------------------------------------------
+# Without this, awareness advances only when somebody CALLS catch_up -- which
+# makes "Webbee knows what was said in Slack" true only in hindsight, at the
+# moment of asking. An hourly schedule is what turns the journal from an archive
+# you consult into awareness that keeps itself current, and it needs neither the
+# signing secret nor an automations slot.
+#
+# Hourly rather than every few minutes on purpose: this polls somebody else's
+# API on a recurring basis forever. One pass per hour over the reachable
+# conversations is enough to keep a working record without turning a background
+# task into sustained load on the workspace's rate limit. When push starts
+# working the schedule costs almost nothing -- every message is already known,
+# so each pass reads the cursor and stops.
+
+@ext.schedule("slack_catch_up", cron="17 * * * *")
+async def scheduled_catch_up(ctx):
+    """Run the sweep hourly, for every connected workspace.
+
+    Deliberately runs the SAME code path as the tool. A schedule with its own
+    copy of the sweep is a second definition of "a message", and the two drift
+    -- which is how a background job quietly records something different from
+    what the user sees when they check by hand.
+
+    Never raises. A scheduled task that throws is retried or disabled by the
+    platform, and neither reaction helps here: the next hour's pass picks up
+    whatever this one missed, because the cursor only advances on success.
+    """
+    try:
+        result = await catch_up(ctx, CatchUpParams())
+    except Exception:
+        await ctx.log("Slack scheduled catch-up failed", level="warn")
+        return
+
+    # Logged at info only when something was actually learned -- an hourly
+    # "nothing new" line is noise that buries the entries worth reading.
+    data = getattr(result, "data", None)
+    new = int(getattr(data, "messages_new", 0) or 0) if data else 0
+    if new:
+        await ctx.log(f"Slack catch-up recorded {new} new message(s)",
+                      level="info")
