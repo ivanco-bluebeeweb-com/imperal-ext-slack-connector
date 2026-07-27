@@ -155,3 +155,55 @@ def test_the_price_model_is_the_one_that_makes_growth_visible():
     pricing = _pricing()
     assert pricing["model"] == "per_action"
     assert pricing["currency"] == "tokens"
+
+
+# --- the shape of the scale, not just its presence ---------------------------
+
+def test_the_scale_actually_separates_cheap_reads_from_costly_writes():
+    """A price list that is technically complete can still say nothing.
+
+    My first attempt priced everything 0/1/2. Every function had a price and
+    every test passed -- yet deleting a message cost the same as listing
+    channels. A scale that flat is not a price list, it is a formality: it
+    stops carrying the one piece of information a price is FOR, which is
+    "this action costs more because it does more."
+
+    So the shape is asserted, not just the coverage.
+    """
+    prices = _pricing()["tool_prices"]
+
+    # Reading history must not cost the same as posting where people see it.
+    assert prices["send_message"] > prices["read_channel"], (
+        "запись, которую видят люди, должна стоить дороже чтения истории")
+
+    # An irreversible action is the most expensive thing here, deliberately:
+    # the price is the last quiet signal before something cannot be undone.
+    assert prices["delete_message"] > prices["send_message"], (
+        "необратимое удаление должно стоить дороже обычной отправки")
+
+    # Touching other people (invites, joining channels) outranks plain writes.
+    assert prices["invite_to_channel"] > prices["edit_message"] or \
+           prices["join_channels"] > prices["edit_message"], (
+        "действия, задевающие других людей, должны стоить дороже правки текста")
+
+    # And the scale must actually have range -- at least four distinct levels,
+    # or it collapses back into the flat table this test exists to prevent.
+    assert len({v for v in prices.values()}) >= 4, (
+        f"шкала слишком плоская: уровни {sorted({v for v in prices.values()})}")
+
+
+def test_the_cheapest_paid_action_is_the_monitor_pass():
+    """The sweep is the floor of the paid scale, and that is on purpose.
+
+    It runs thousands of times a month unattended, so it is the one price a
+    user cannot audit call by call. Anything billed BELOW an automatic
+    background pass would mean a hand-made request costs less than a machine
+    waking up -- which would make the projections the least trustworthy number
+    in the app instead of the most.
+    """
+    prices = _pricing()["tool_prices"]
+    paid = [v for v in prices.values() if v > 0]
+
+    assert prices["catch_up"] == min(paid), (
+        f"проход монитора ({prices['catch_up']}) должен быть самым дешёвым "
+        f"платным действием, а минимум сейчас {min(paid)}")
