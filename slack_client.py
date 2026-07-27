@@ -61,6 +61,13 @@ SLACK_ARCHIVED = "SLACK_ARCHIVED"
 SLACK_SECRET_UNAVAILABLE = "SLACK_SECRET_UNAVAILABLE"
 SLACK_SECRET_WRITE_FAILED = "SLACK_SECRET_WRITE_FAILED"
 
+# A SETTING that could not be written -- distinct from a secret write failure,
+# because the advice differs: nothing needs re-pasting, the store simply did not
+# accept the change, and the caller has to be told the switch did NOT flip.
+# Reporting success here would be the worst outcome: the user believes Webbee is
+# answering Slack when she is not.
+SLACK_SETTING_WRITE_FAILED = "SLACK_SETTING_WRITE_FAILED"
+
 # Slack's `error` string is far more precise than the HTTP status (which is
 # usually just 200), so it always wins.
 _SLACK_ERROR_MAP = {

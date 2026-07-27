@@ -176,6 +176,20 @@ class ListInboundParams(BaseModel):
         False, description="Only messages with no reply from the app yet")
 
 
+class AutoReplyParams(BaseModel):
+    """Turn automatic answering on or off.
+
+    `enabled` is REQUIRED with no default. A toggle that defaults to something
+    would let a vague instruction flip a switch that makes the app write to
+    other people's Slack -- the one setting where an accidental value is
+    expensive and cannot be taken back.
+    """
+    enabled: bool = Field(
+        ..., description="True turns automatic answering ON, false turns it OFF")
+    note: str = Field(
+        "", description="Optional reason, kept with the setting for context")
+
+
 class SendMessageParams(WorkspaceScoped):
     channel: str = Field(
         ..., description="Channel name or id to post to, e.g. '#general'. A "
@@ -532,6 +546,25 @@ class MessageAck(_Named):
 
     _id_field: ClassVar[str] = "ts"
     _title_field: ClassVar[str] = "channel"
+
+
+class AutoReplyStatusParams(BaseModel):
+    """No inputs: it reports state, which is not parameterised."""
+
+
+class AutoReplyStatus(_Named):
+    """Whether Webbee answers Slack by herself, and what the last pass did."""
+    enabled: bool = False
+    waiting: int = 0
+    replied_last_pass: int = 0
+    schedule: str = ""
+    max_per_pass: int = 0
+    changed_at: str = ""
+    note: str = ""
+    detail: str = ""
+
+    _id_field: ClassVar[str] = "kind"
+    _title_field: ClassVar[str] = "detail"
 
 
 class ChannelAck(_Named):

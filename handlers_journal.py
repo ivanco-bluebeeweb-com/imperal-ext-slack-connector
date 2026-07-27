@@ -26,6 +26,7 @@ from __future__ import annotations
 from imperal_sdk import ActionResult
 
 import accounts as acc
+import autoreply
 import inbound
 import journal
 import shared
@@ -33,6 +34,9 @@ import slack_client as sc
 import slack_objects as so
 from app import chat, ext
 from models import (
+    AutoReplyParams,
+    AutoReplyStatus,
+    AutoReplyStatusParams,
     JoinChannelsParams,
     JoinReport,
     CatchUpParams,
@@ -417,6 +421,32 @@ async def scheduled_catch_up(ctx):
         await ctx.log(f"Slack catch-up recorded {new} new message(s)",
                       level="info")
 
+    # ANSWERING RIDES THE SAME PASS.
+    #
+    # This is the moment new messages become known, so it is the moment to
+    # answer them -- no second schedule to drift out of step with the first,
+    # and no automations slot spent on "read my own journal".
+    #
+    # In its own try/except, and deliberately AFTER the sweep: collecting
+    # messages is the job this schedule was built for, and a failure in the
+    # newer, chattier half must not cost the workspace its awareness. Silence
+    # is the correct outcome when auto-reply is off, which is the default.
+    try:
+        report = await autoreply.run_once(ctx)
+    except Exception:
+        await ctx.log("Slack auto-reply pass failed", level="warn")
+        return
+
+    if report.get("replied"):
+        await ctx.log(
+            f"Slack auto-reply answered {report['replied']} message(s)",
+            level="info")
+    elif report.get("skipped"):
+        await ctx.log(
+            f"Slack auto-reply skipped {report['skipped']} message(s): "
+            f"{report.get('detail') or report.get('reason') or 'причина не указана'}",
+            level="warn")
+
 
 # --- joining channels, so awareness does not need a human in every one -------
 
@@ -539,3 +569,88 @@ async def join_channels(ctx, params: JoinChannelsParams) -> ActionResult:
             state=(f"joined {len(joined)}" if joined
                    else "nothing to join" if not failed else "refused"),
             detail=" ".join(parts)))
+
+
+# --- answering by herself ----------------------------------------------------
+#
+# A switch, deliberately. Automatic answering is the one capability here that
+# writes to OTHER people's Slack without anyone watching, so it does not arrive
+# switched on and it is not inferred from context -- somebody says yes.
+
+
+@chat.function(
+    "set_autoreply",
+    "Turn automatic answering on or off: whether Webbee replies by herself "
+    "when someone mentions her in Slack or writes her a DM.",
+    action_type="write", chain_callable=True,
+    effects=["slack.autoreply.changed"],
+    event="slack-connector.set_autoreply",
+    data_model=AutoReplyStatus,
+)
+async def set_autoreply(ctx, params: AutoReplyParams) -> ActionResult:
+    """Flip the auto-reply switch and report the resulting state.
+
+    Reports what is WAITING as well as the new state, because "on" with three
+    messages already pending means three replies go out on the next pass -- and
+    that is worth knowing at the moment of switching, not afterwards.
+    """
+    saved = await autoreply.set_enabled(ctx, params.enabled, note=params.note)
+    if not saved:
+        return _error(
+            "Настройку автоответов не удалось сохранить. Попробуй ещё раз.",
+            sc.SLACK_SETTING_WRITE_FAILED)
+
+    waiting = len(await autoreply.pending(ctx))
+    if params.enabled:
+        detail = "Автоответы включены"
+        summary = (f"Автоответы включены. Ждут ответа: {waiting}."
+                   if waiting else
+                   "Автоответы включены. Сейчас ничего не ждёт ответа.")
+    else:
+        detail = "Автоответы выключены"
+        summary = ("Автоответы выключены — Webbee больше не отвечает в Slack "
+                   "сама.")
+
+    return ActionResult.success(
+        summary=summary,
+        data=AutoReplyStatus(
+            enabled=params.enabled, waiting=waiting,
+            schedule=journal.SWEEP_CRON,
+            max_per_pass=autoreply.MAX_REPLIES_PER_RUN,
+            note=params.note, detail=detail))
+
+
+@chat.function(
+    "autoreply_status",
+    "Report whether Webbee answers Slack messages by herself, how many "
+    "messages are waiting for an answer, and when the next pass runs.",
+    action_type="read", chain_callable=True,
+    data_model=AutoReplyStatus,
+)
+async def autoreply_status(ctx, params: AutoReplyStatusParams) -> ActionResult:
+    """State of automatic answering, and what it would do next."""
+    enabled = await autoreply.is_enabled(ctx)
+    waiting_rows = await autoreply.pending(ctx)
+    waiting = len(waiting_rows)
+
+    if not enabled:
+        detail = "Автоответы выключены"
+        summary = ("Автоответы выключены: Webbee видит обращения, но не "
+                   "отвечает сама.")
+        if waiting:
+            summary += f" Ждут ответа: {waiting}."
+    elif waiting:
+        detail = f"Автоответы включены, ждут ответа: {waiting}"
+        summary = (f"Автоответы включены. Ждут ответа: {waiting} — ответы "
+                   f"уйдут на следующем проходе.")
+    else:
+        detail = "Автоответы включены, всё отвечено"
+        summary = "Автоответы включены. Всё, к чему обращались, уже отвечено."
+
+    return ActionResult.success(
+        summary=summary,
+        data=AutoReplyStatus(
+            enabled=enabled, waiting=waiting,
+            schedule=journal.SWEEP_CRON,
+            max_per_pass=autoreply.MAX_REPLIES_PER_RUN,
+            detail=detail))

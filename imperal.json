@@ -3915,6 +3915,297 @@
       "long_running": false,
       "scopes": [],
       "owner_chat_tool": "slack"
+    },
+    {
+      "name": "set_autoreply",
+      "description": "Turn automatic answering on or off: whether Webbee replies by herself when someone mentions her in Slack or writes her a DM.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.autoreply.changed"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Turn automatic answering on or off.\n\n`enabled` is REQUIRED with no default. A toggle that defaults to something\nwould let a vague instruction flip a switch that makes the app write to\nother people's Slack -- the one setting where an accidental value is\nexpensive and cannot be taken back.",
+        "properties": {
+          "enabled": {
+            "description": "True turns automatic answering ON, false turns it OFF",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "note": {
+            "default": "",
+            "description": "Optional reason, kept with the setting for context",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "AutoReplyParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Whether Webbee answers Slack by herself, and what the last pass did.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "waiting": {
+            "default": 0,
+            "title": "Waiting",
+            "type": "integer"
+          },
+          "replied_last_pass": {
+            "default": 0,
+            "title": "Replied Last Pass",
+            "type": "integer"
+          },
+          "schedule": {
+            "default": "",
+            "title": "Schedule",
+            "type": "string"
+          },
+          "max_per_pass": {
+            "default": 0,
+            "title": "Max Per Pass",
+            "type": "integer"
+          },
+          "changed_at": {
+            "default": "",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "AutoReplyStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.set_autoreply",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "autoreply_status",
+      "description": "Report whether Webbee answers Slack messages by herself, how many messages are waiting for an answer, and when the next pass runs.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "No inputs: it reports state, which is not parameterised.",
+        "properties": {},
+        "title": "AutoReplyStatusParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Whether Webbee answers Slack by herself, and what the last pass did.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "waiting": {
+            "default": 0,
+            "title": "Waiting",
+            "type": "integer"
+          },
+          "replied_last_pass": {
+            "default": 0,
+            "title": "Replied Last Pass",
+            "type": "integer"
+          },
+          "schedule": {
+            "default": "",
+            "title": "Schedule",
+            "type": "string"
+          },
+          "max_per_pass": {
+            "default": 0,
+            "title": "Max Per Pass",
+            "type": "integer"
+          },
+          "changed_at": {
+            "default": "",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "AutoReplyStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
     }
   ],
   "signals": [],
