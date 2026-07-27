@@ -305,3 +305,91 @@ def test_every_ui_component_call_uses_only_real_keyword_arguments():
                         f"{name}:{node.lineno} ui.{fn.attr}({kw.arg}=...) "
                         f"invalid; accepts {sorted(valid)}")
     assert not problems, "invalid ui.* keyword arguments: " + "; ".join(problems)
+
+
+# --- an entity must be readable in chat, not just in the panel ---------------
+
+def _message_entities():
+    """Entity classes that represent a message someone actually wrote."""
+    import models as m
+
+    return [m.InboundMessage, m.MessageRecord, m.SearchHit]
+
+
+def test_a_message_entity_is_titled_by_its_text():
+    """The title of a message is WHAT WAS SAID.
+
+    Found live: the journal titled rows by author, so a message arrived in chat
+    as "Vladislav Ivanco · Vladislav Ivanco · inboundmessage" -- the words
+    nowhere in sight. The panel rendered the full record and showed the text,
+    so the same message was visible on one surface and unreadable on the other.
+    Webbee cannot mention what she cannot read: the message was "received" and
+    still effectively missing.
+
+    Asserted over EVERY message entity, because the mistake was copy-pasted
+    across four of them and fixing only the one that got reported would leave
+    the others waiting to be discovered the same way.
+    """
+    for cls in _message_entities():
+        assert cls._title_field == "text", (
+            f"{cls.__name__} is titled by '{cls._title_field}', not by the "
+            f"message text — it will arrive in chat without the words")
+
+
+def test_a_message_entity_says_who_and_where_in_its_subtitle():
+    """Author and location belong in the subtitle, not the title."""
+    for cls in _message_entities():
+        parts = cls._subtitle_parts
+        assert parts, f"{cls.__name__} has no subtitle: chat shows no context"
+        assert "author" in parts, f"{cls.__name__} subtitle omits the author"
+
+
+def test_a_message_id_is_not_mistaken_for_a_phone_number():
+    """A bare Slack ts is a long digit string and gets redacted as PII.
+
+    Found live: ids arrived in chat as "<PHONE>" — the platform's PII guard
+    read "1785176897.496389" as a phone number. The id was then useless for
+    referring back to the message.
+
+    The prefix must keep the timestamp RECOVERABLE: `ts` is a message's
+    identity, and an id you cannot map back to it cannot address a reply.
+    """
+    import models as m
+
+    ts = "1785176897.496389"
+    msg = m.InboundMessage(text="привет", author="Vlad", ts=ts)
+
+    assert msg.id != ts, "a bare ts id is redacted as a phone number"
+    assert not str(msg.id).replace(".", "").isdigit(), (
+        f"id {msg.id!r} is still all digits and will be redacted")
+    assert str(msg.id).split(":", 1)[1] == ts, (
+        "the timestamp must stay recoverable from the id, or replies to this "
+        "message can no longer be addressed")
+
+
+def test_a_message_with_no_text_still_has_a_name():
+    """An attachment-only message must not render as a nameless row."""
+    import models as m
+
+    with_file = m.InboundMessage(text="", author="Vlad", ts="1.1",
+                                 has_files=True)
+    without = m.InboundMessage(text="", author="Vlad", ts="1.2")
+
+    assert with_file.title.strip(), "attachment-only message has no title"
+    assert "влож" in with_file.title.lower(), (
+        f"title {with_file.title!r} does not say there is an attachment")
+    assert without.title.strip(), "empty message renders as a nameless row"
+
+
+def test_a_direct_message_says_so_instead_of_showing_a_blank_channel():
+    """A DM has no channel name; the subtitle must not show an empty gap."""
+    import models as m
+
+    dm = m.InboundMessage(text="привет", author="Vlad", is_dm=True,
+                          ts="1.3", posted_at="вчера")
+
+    assert dm.subtitle, "a DM has no subtitle at all"
+    assert "·  ·" not in dm.subtitle, (
+        f"subtitle {dm.subtitle!r} has an empty slot where the channel was")
+    assert "личное" in dm.subtitle.lower(), (
+        f"subtitle {dm.subtitle!r} does not say this is a direct message")

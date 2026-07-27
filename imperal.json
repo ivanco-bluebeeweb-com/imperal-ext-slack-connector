@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": 3,
-  "sdk_version": "5.9.12",
+  "sdk_version": "5.9.13",
   "app_id": "slack-connector",
   "version": "1.0.0",
   "name": "Slack Connector",
@@ -595,6 +595,16 @@
             "title": "Channels Joined",
             "type": "integer"
           },
+          "conversations_readable": {
+            "default": 0,
+            "title": "Conversations Readable",
+            "type": "integer"
+          },
+          "dms_readable": {
+            "default": 0,
+            "title": "Dms Readable",
+            "type": "integer"
+          },
           "can_search": {
             "default": false,
             "title": "Can Search",
@@ -668,7 +678,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "One message, with mentions and links already rendered readable.",
+        "description": "One message, with mentions and links already rendered readable.\n\nThe title is the TEXT, not the author. A reader asking \"what was said?\"\ngets an answer from the title alone; titling by author produced rows like\n\"Vladislav Ivanco · Vladislav Ivanco\" with the words nowhere in sight, so\nthe message was in the result and still unreadable.",
         "properties": {
           "id": {
             "anyOf": [
@@ -843,7 +853,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "One message, with mentions and links already rendered readable.",
+        "description": "One message, with mentions and links already rendered readable.\n\nThe title is the TEXT, not the author. A reader asking \"what was said?\"\ngets an answer from the title alone; titling by author produced rows like\n\"Vladislav Ivanco · Vladislav Ivanco\" with the words nowhere in sight, so\nthe message was in the result and still unreadable.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1012,7 +1022,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "A search match -- carries its channel, since results span the workspace.",
+        "description": "A search match -- carries its channel, since results span the workspace.\n\nTitled by TEXT: a page of hits all titled by channel name reads as the same\nrow repeated, which defeats the point of searching.",
         "properties": {
           "id": {
             "anyOf": [
@@ -2534,7 +2544,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "One message, with mentions and links already rendered readable.",
+        "description": "One message, with mentions and links already rendered readable.\n\nThe title is the TEXT, not the author. A reader asking \"what was said?\"\ngets an answer from the title alone; titling by author produced rows like\n\"Vladislav Ivanco · Vladislav Ivanco\" with the words nowhere in sight, so\nthe message was in the result and still unreadable.",
         "properties": {
           "id": {
             "anyOf": [
@@ -2712,7 +2722,7 @@
       "return_schema": {
         "$defs": {
           "MessageRecord": {
-            "description": "One message, with mentions and links already rendered readable.",
+            "description": "One message, with mentions and links already rendered readable.\n\nThe title is the TEXT, not the author. A reader asking \"what was said?\"\ngets an answer from the title alone; titling by author produced rows like\n\"Vladislav Ivanco · Vladislav Ivanco\" with the words nowhere in sight, so\nthe message was in the result and still unreadable.",
             "properties": {
               "id": {
                 "anyOf": [
@@ -2974,7 +2984,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Whether the Slack events endpoint is ready to receive.",
+        "description": "Whether Slack messages are reaching Webbee, and by which route.\n\nTwo separate facts, deliberately not collapsed into one. `ready` is about\nPUSH (endpoint + signing secret); `aware` is about whether messages are\nactually being recorded at all -- which the hourly sweep achieves without\npush. Reporting only the first said \"not ready\" while awareness worked fine,\nwhich is how a working feature gets debugged as a broken one.",
         "properties": {
           "id": {
             "anyOf": [
@@ -3070,6 +3080,46 @@
             "default": false,
             "title": "Ready",
             "type": "boolean"
+          },
+          "aware": {
+            "default": false,
+            "title": "Aware",
+            "type": "boolean"
+          },
+          "messages_recorded": {
+            "default": 0,
+            "title": "Messages Recorded",
+            "type": "integer"
+          },
+          "from_push": {
+            "default": 0,
+            "title": "From Push",
+            "type": "integer"
+          },
+          "from_sweep": {
+            "default": 0,
+            "title": "From Sweep",
+            "type": "integer"
+          },
+          "sweep_schedule": {
+            "default": "",
+            "title": "Sweep Schedule",
+            "type": "string"
+          },
+          "delivery_attempts": {
+            "default": 0,
+            "title": "Delivery Attempts",
+            "type": "integer"
+          },
+          "deliveries_refused": {
+            "default": 0,
+            "title": "Deliveries Refused",
+            "type": "integer"
+          },
+          "last_refusal_code": {
+            "default": "",
+            "title": "Last Refusal Code",
+            "type": "string"
           },
           "detail": {
             "default": "",
@@ -3117,7 +3167,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Whether the Slack events endpoint is ready to receive.",
+        "description": "Whether Slack messages are reaching Webbee, and by which route.\n\nTwo separate facts, deliberately not collapsed into one. `ready` is about\nPUSH (endpoint + signing secret); `aware` is about whether messages are\nactually being recorded at all -- which the hourly sweep achieves without\npush. Reporting only the first said \"not ready\" while awareness worked fine,\nwhich is how a working feature gets debugged as a broken one.",
         "properties": {
           "id": {
             "anyOf": [
@@ -3214,6 +3264,46 @@
             "title": "Ready",
             "type": "boolean"
           },
+          "aware": {
+            "default": false,
+            "title": "Aware",
+            "type": "boolean"
+          },
+          "messages_recorded": {
+            "default": 0,
+            "title": "Messages Recorded",
+            "type": "integer"
+          },
+          "from_push": {
+            "default": 0,
+            "title": "From Push",
+            "type": "integer"
+          },
+          "from_sweep": {
+            "default": 0,
+            "title": "From Sweep",
+            "type": "integer"
+          },
+          "sweep_schedule": {
+            "default": "",
+            "title": "Sweep Schedule",
+            "type": "string"
+          },
+          "delivery_attempts": {
+            "default": 0,
+            "title": "Delivery Attempts",
+            "type": "integer"
+          },
+          "deliveries_refused": {
+            "default": 0,
+            "title": "Deliveries Refused",
+            "type": "integer"
+          },
+          "last_refusal_code": {
+            "default": "",
+            "title": "Last Refusal Code",
+            "type": "string"
+          },
           "detail": {
             "default": "",
             "title": "Detail",
@@ -3234,12 +3324,583 @@
       "long_running": false,
       "scopes": [],
       "owner_chat_tool": "slack"
+    },
+    {
+      "name": "catch_up",
+      "description": "Sweep every Slack conversation the app can reach -- channels it was added to and direct messages -- and record anything said since the last sweep. Use this to make Webbee aware of messages without waiting for push events.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Poll every reachable conversation and journal what is new.\n\nThis is the path that makes awareness work WITHOUT the inbound endpoint:\nno signing secret, no automation slot, no platform fix. Slack is polled for\nthe conversations the app can read, and anything not already journalled is\nrecorded.",
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "limit_per_channel": {
+            "default": 25,
+            "description": "How many recent messages to examine per conversation",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit Per Channel",
+            "type": "integer"
+          },
+          "max_channels": {
+            "default": 40,
+            "description": "How many conversations to sweep, at most",
+            "maximum": 60,
+            "minimum": 1,
+            "title": "Max Channels",
+            "type": "integer"
+          },
+          "include_channels": {
+            "default": true,
+            "description": "Sweep channels the app has been added to",
+            "title": "Include Channels",
+            "type": "boolean"
+          },
+          "include_dms": {
+            "default": true,
+            "description": "Sweep direct messages with the app",
+            "title": "Include Dms",
+            "type": "boolean"
+          },
+          "full": {
+            "default": false,
+            "description": "Ignore the saved position and re-examine recent history. Use after a gap; the journal still refuses duplicates.",
+            "title": "Full",
+            "type": "boolean"
+          }
+        },
+        "title": "CatchUpParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "What one catch-up sweep looked at and what it newly learned.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "conversations_seen": {
+            "default": 0,
+            "title": "Conversations Seen",
+            "type": "integer"
+          },
+          "conversations_swept": {
+            "default": 0,
+            "title": "Conversations Swept",
+            "type": "integer"
+          },
+          "conversations_skipped": {
+            "default": 0,
+            "title": "Conversations Skipped",
+            "type": "integer"
+          },
+          "messages_examined": {
+            "default": 0,
+            "title": "Messages Examined",
+            "type": "integer"
+          },
+          "messages_new": {
+            "default": 0,
+            "title": "Messages New",
+            "type": "integer"
+          },
+          "messages_duplicate": {
+            "default": 0,
+            "title": "Messages Duplicate",
+            "type": "integer"
+          },
+          "messages_ignored": {
+            "default": 0,
+            "title": "Messages Ignored",
+            "type": "integer"
+          },
+          "skipped_detail": {
+            "default": "",
+            "title": "Skipped Detail",
+            "type": "string"
+          },
+          "swept_detail": {
+            "default": "",
+            "title": "Swept Detail",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "state": {
+            "default": "",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "title": "SweepReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "list_inbound",
+      "description": "Show the Slack messages the app has recorded -- what was said, by whom, where, and whether it mentioned the app. Reads the journal; does not contact Slack.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Read what the journal remembers. Not WorkspaceScoped: the journal is\nkeyed by conversation, and a caller asking 'what came in' rarely knows or\ncares which workspace a message belongs to.",
+        "properties": {
+          "limit": {
+            "default": 30,
+            "description": "How many messages to return, newest first",
+            "maximum": 200,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "channel": {
+            "default": "",
+            "description": "Only this conversation, by name or id. Empty = all.",
+            "title": "Channel",
+            "type": "string"
+          },
+          "dms_only": {
+            "default": false,
+            "description": "Only direct messages",
+            "title": "Dms Only",
+            "type": "boolean"
+          },
+          "mentions_only": {
+            "default": false,
+            "description": "Only messages that @-mention the app",
+            "title": "Mentions Only",
+            "type": "boolean"
+          },
+          "unanswered_only": {
+            "default": false,
+            "description": "Only messages with no reply from the app yet",
+            "title": "Unanswered Only",
+            "type": "boolean"
+          }
+        },
+        "title": "ListInboundParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "One journalled inbound message -- what was said, where, and by whom.\n\nCarries `reply_thread_ts` because the whole point of remembering a message\nis being able to answer it in the right place later, and re-deriving\nSlack's thread rules at reply time is how replies end up in the wrong\nthread.\n\nTitled by TEXT for a concrete reason: the journal is how Webbee learns what\nwas said in Slack, and titling by author meant every row arrived in chat as\n\"Vladislav Ivanco\" with the message body absent. The panel showed the words\n(it renders the full record), chat did not -- so the same message was\nvisible in one surface and invisible in the other, and Webbee could not\nmention what she could not read.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "text": {
+            "default": "",
+            "title": "Text",
+            "type": "string"
+          },
+          "author": {
+            "default": "",
+            "title": "Author",
+            "type": "string"
+          },
+          "author_id": {
+            "default": "",
+            "title": "Author Id",
+            "type": "string"
+          },
+          "channel": {
+            "default": "",
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_id": {
+            "default": "",
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "is_dm": {
+            "default": false,
+            "title": "Is Dm",
+            "type": "boolean"
+          },
+          "ts": {
+            "default": "",
+            "title": "Ts",
+            "type": "string"
+          },
+          "posted_at": {
+            "default": "",
+            "title": "Posted At",
+            "type": "string"
+          },
+          "thread_ts": {
+            "default": "",
+            "title": "Thread Ts",
+            "type": "string"
+          },
+          "reply_thread_ts": {
+            "default": "",
+            "title": "Reply Thread Ts",
+            "type": "string"
+          },
+          "is_thread_reply": {
+            "default": false,
+            "title": "Is Thread Reply",
+            "type": "boolean"
+          },
+          "mention_of_bot": {
+            "default": false,
+            "title": "Mention Of Bot",
+            "type": "boolean"
+          },
+          "has_files": {
+            "default": false,
+            "title": "Has Files",
+            "type": "boolean"
+          },
+          "source": {
+            "default": "",
+            "title": "Source",
+            "type": "string"
+          },
+          "would_raise": {
+            "default": "",
+            "title": "Would Raise",
+            "type": "string"
+          },
+          "permalink": {
+            "default": "",
+            "title": "Permalink",
+            "type": "string"
+          }
+        },
+        "title": "InboundMessage",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "join_channels",
+      "description": "Have the Slack app add itself to public channels, so it can see messages there. Names the channels, or joins every public channel it is not yet in. Private channels still need an invite from someone inside.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.channel.joined"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Have the app add ITSELF to public channels.\n\nExists because the alternative was a permanent chore: a human typing\n/invite @app in every channel, including every channel created from now on.\nA bot token with channels:join can join any PUBLIC channel unaided, so the\nmanual step was never actually required for the common case.\n\nPrivate channels and DMs are untouched by this: Slack genuinely has no\nself-join for a private channel (someone inside must invite), and a DM needs\nno joining at all.",
+        "properties": {
+          "workspace": {
+            "default": "",
+            "description": "Workspace name, e.g. 'Acme'. Omit when only one Slack workspace is connected.",
+            "title": "Workspace",
+            "type": "string"
+          },
+          "channels": {
+            "default": "",
+            "description": "Channel names or ids, comma-separated, e.g. '#random, #lol-kek'. EMPTY joins every public channel the app can see but is not yet in.",
+            "title": "Channels",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": false,
+            "description": "List what would be joined without joining anything",
+            "title": "Dry Run",
+            "type": "boolean"
+          }
+        },
+        "title": "JoinChannelsParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "What the app joined, what it skipped, and what it could not do.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "joined": {
+            "default": "",
+            "title": "Joined",
+            "type": "string"
+          },
+          "joined_count": {
+            "default": 0,
+            "title": "Joined Count",
+            "type": "integer"
+          },
+          "already_in": {
+            "default": "",
+            "title": "Already In",
+            "type": "string"
+          },
+          "already_count": {
+            "default": 0,
+            "title": "Already Count",
+            "type": "integer"
+          },
+          "failed": {
+            "default": "",
+            "title": "Failed",
+            "type": "string"
+          },
+          "failed_count": {
+            "default": 0,
+            "title": "Failed Count",
+            "type": "integer"
+          },
+          "needs_a_human": {
+            "default": "",
+            "title": "Needs A Human",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          },
+          "state": {
+            "default": "",
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "title": "JoinReport",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.join_channels",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
     }
   ],
   "signals": [],
-  "schedules": [],
+  "schedules": [
+    {
+      "name": "slack_catch_up",
+      "cron": "17 * * * *"
+    }
+  ],
   "required_scopes": [],
-  "icon_size_bytes": 374,
+  "icon_size_bytes": 1533,
   "webhooks": [
     {
       "path": "/events",

@@ -276,19 +276,47 @@ class _Named(sdl.Entity):
     Subclasses set `_id_field` / `_title_field`. Both default to empty rather
     than to a placeholder like "unknown": an entity with no natural name should
     read as blank, never as invented text.
+
+    `_subtitle_parts` names the fields that make up the one-line context under
+    the title. It exists because `subtitle` is what a chat client shows next to
+    an entity, and leaving it empty is how a message ends up displayed as
+    "author · author · kind" with the actual words nowhere in sight.
     """
     id: str | int = ""
     title: str = ""
 
     _id_field: ClassVar[str] = ""
     _title_field: ClassVar[str] = ""
+    _subtitle_parts: ClassVar[tuple[str, ...]] = ()
+    #: Prefix for ids built from a Slack timestamp. A bare "1785176897.496389"
+    #: is a long digit string, and the platform's PII guard reads it as a phone
+    #: number and replaces it with "<PHONE>" -- so the id arrived in chat as
+    #: redacted noise. The prefix keeps the id stable and still parseable
+    #: (split on ":") while no longer looking like a phone number.
+    _TS_ID_PREFIX: ClassVar[str] = "slack:"
 
     @model_validator(mode="after")
     def _fill_identity(self):
         if not self.id and self._id_field:
-            self.id = str(getattr(self, self._id_field, "") or "")
+            raw = str(getattr(self, self._id_field, "") or "")
+            # Only timestamps get the prefix; channel ids and the like are
+            # already non-numeric and must stay exactly as Slack returns them.
+            if raw and self._id_field == "ts":
+                raw = f"{self._TS_ID_PREFIX}{raw}"
+            self.id = raw
         if not self.title and self._title_field:
             self.title = str(getattr(self, self._title_field, "") or "")
+        # A message can legitimately have no text: an attachment, an image, a
+        # bare file drop. Titling it "" produces a nameless row that reads as a
+        # rendering bug, so say what it actually is.
+        if not self.title and self._title_field == "text":
+            self.title = ("[вложение]" if getattr(self, "has_files", False)
+                          else "[без текста]")
+        if self.subtitle is None and self._subtitle_parts:
+            parts = [str(getattr(self, f, "") or "").strip()
+                     for f in self._subtitle_parts]
+            joined = " · ".join(p for p in parts if p)
+            self.subtitle = joined or None
         return self
 
 
@@ -372,7 +400,13 @@ class ChannelList(_Named):
 
 
 class MessageRecord(_Named):
-    """One message, with mentions and links already rendered readable."""
+    """One message, with mentions and links already rendered readable.
+
+    The title is the TEXT, not the author. A reader asking "what was said?"
+    gets an answer from the title alone; titling by author produced rows like
+    "Vladislav Ivanco · Vladislav Ivanco" with the words nowhere in sight, so
+    the message was in the result and still unreadable.
+    """
     text: str = ""
     author: str = ""
     author_id: str = ""
@@ -385,7 +419,8 @@ class MessageRecord(_Named):
     permalink: str = ""
 
     _id_field: ClassVar[str] = "ts"
-    _title_field: ClassVar[str] = "author"
+    _title_field: ClassVar[str] = "text"
+    _subtitle_parts: ClassVar[tuple[str, ...]] = ("author", "posted_at")
 
 
 class MessageList(_Named):
@@ -404,7 +439,11 @@ class MessageList(_Named):
 
 
 class SearchHit(_Named):
-    """A search match -- carries its channel, since results span the workspace."""
+    """A search match -- carries its channel, since results span the workspace.
+
+    Titled by TEXT: a page of hits all titled by channel name reads as the same
+    row repeated, which defeats the point of searching.
+    """
     text: str = ""
     author: str = ""
     channel: str = ""
@@ -413,7 +452,13 @@ class SearchHit(_Named):
     permalink: str = ""
 
     _id_field: ClassVar[str] = "ts"
-    _title_field: ClassVar[str] = "channel"
+    _title_field: ClassVar[str] = "text"
+    _subtitle_parts: ClassVar[tuple[str, ...]] = ("author", "where", "posted_at")
+
+    @property
+    def where(self) -> str:
+        """Channel with its #, matching how Slack itself writes it."""
+        return f"#{self.channel}" if self.channel else ""
 
 
 class SearchResults(_Named):
@@ -501,6 +546,13 @@ class InboundMessage(_Named):
     is being able to answer it in the right place later, and re-deriving
     Slack's thread rules at reply time is how replies end up in the wrong
     thread.
+
+    Titled by TEXT for a concrete reason: the journal is how Webbee learns what
+    was said in Slack, and titling by author meant every row arrived in chat as
+    "Vladislav Ivanco" with the message body absent. The panel showed the words
+    (it renders the full record), chat did not -- so the same message was
+    visible in one surface and invisible in the other, and Webbee could not
+    mention what she could not read.
     """
     text: str = ""
     author: str = ""
@@ -520,7 +572,15 @@ class InboundMessage(_Named):
     permalink: str = ""
 
     _id_field: ClassVar[str] = "ts"
-    _title_field: ClassVar[str] = "author"
+    _title_field: ClassVar[str] = "text"
+    _subtitle_parts: ClassVar[tuple[str, ...]] = ("author", "where", "posted_at")
+
+    @property
+    def where(self) -> str:
+        """Human location: a DM says so, a channel gets its #name."""
+        if self.is_dm:
+            return "личное сообщение"
+        return f"#{self.channel}" if self.channel else ""
 
 
 class InboundLog(_Named):
