@@ -12,6 +12,7 @@ from imperal_sdk import ActionResult
 
 import accounts as acc
 import inbound
+import journal
 import shared
 import slack_client as sc
 import slack_objects as so
@@ -171,12 +172,26 @@ async def send_message(ctx, params: SendMessageParams) -> ActionResult:
     data = out.get("data") or {}
     ts = str(data.get("ts") or "")
     where = shared.channel_label(target)
+
+    # CLOSE THE LOOP. A threaded reply means the inbound message it answers is
+    # no longer waiting, and the journal has to know: `recent(unresolved_only)`
+    # filters on `replied`, and until this call existed nothing ever set it --
+    # so "not yet answered" silently meant "everything, forever". Any scheduled
+    # rule that answers mentions would then re-answer the same person on every
+    # run. Marking here, at the moment the reply actually succeeds, is the only
+    # place that cannot drift out of sync with reality.
+    marked = 0
+    if thread_ts:
+        marked = await journal.mark_thread_replied(
+            ctx, target["id"], thread_ts, reply_ts=ts)
+
     return ActionResult.success(
         summary=((f"Replied in the thread in {where}{auto_note}." if thread_ts
                   else f"Sent to {where}{auto_note}.")),
         data=MessageAck(channel=target["name"], channel_id=target["id"], ts=ts,
                         action="replied" if thread_ts else "sent",
-                        detail=so.humanize_ts(ts)))
+                        detail=so.humanize_ts(ts),
+                        marked_answered=marked))
 
 
 @chat.function(

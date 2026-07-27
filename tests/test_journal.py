@@ -801,3 +801,112 @@ def test_the_raw_timestamp_is_never_reformatted():
     assert entity.ts == raw
     assert entity.reply_thread_ts == raw
     assert entity.thread_ts == raw
+
+
+# --- the loop guard: answer once, not every hour ------------------------------
+
+async def test_an_unanswered_filter_that_never_marks_anything_is_a_lie(ctx):
+    """`replied` was read but never written — so the filter passed everything.
+
+    THE BUG THIS EXISTS TO PREVENT. `recent(unresolved_only=True)` has always
+    filtered on `replied`, and nothing in the app ever set it. So "messages
+    with no reply yet" silently meant "every message ever". A scheduled rule
+    answering mentions on that basis would answer the same person on every
+    single run — an hourly stranger repeating itself in someone else's Slack.
+    That is not a wrong answer, it is harassment, and it is unrecoverable
+    because the messages are already sent.
+    """
+    import journal
+
+    await journal.record(ctx, {
+        "channel_id": "C1", "message_ts": "100.1", "text": "эй, вебби",
+        "user_id": "U1", "user_display_name": "Vlad", "channel_name": "general",
+        "mention_of_bot": True, "reply_thread_ts": "100.1",
+    }, source=journal.SOURCE_SWEEP)
+
+    waiting = await journal.recent(ctx, unresolved_only=True)
+    assert len(waiting) == 1, "сообщение должно ждать ответа"
+
+    marked = await journal.mark_replied(ctx, "C1", "100.1", reply_ts="200.2")
+    assert marked is True, "отметка не записалась — защита от повторов мертва"
+
+    waiting_after = await journal.recent(ctx, unresolved_only=True)
+    assert waiting_after == [], (
+        "сообщение всё ещё считается неотвеченным — правило ответит повторно")
+
+    # The message itself must not vanish from the journal: it is history.
+    assert len(await journal.recent(ctx)) == 1
+
+
+async def test_marking_needs_the_channel_not_just_the_timestamp(ctx):
+    """A ts is unique only within a conversation.
+
+    Two channels can hold the same ts. Marking by ts alone would silence a
+    message nobody answered — the failure is invisible, which is worse than a
+    duplicate reply.
+
+    Asserted BOTH ways round, because the store returns matches in arbitrary
+    order: a test that only checks "C2 still waiting" passes by luck whenever
+    the wrong-field lookup happens to hit C1 first. Sabotaging the lookup to
+    ignore the channel proved that blindness, so the assertion is now on the
+    marked row's own channel, not on the leftovers.
+    """
+    import journal
+
+    # ORDER MATTERS, and not incidentally. The store returns the FIRST match,
+    # in insertion order. Recording the target channel first would let a
+    # channel-blind lookup land on the right row by accident and the test would
+    # pass while the guard was broken — which is exactly what happened before
+    # this comment existed. C2 is written first so that ignoring the channel
+    # marks the WRONG conversation, deterministically.
+    for channel in ("C2", "C1"):
+        await journal.record(ctx, {
+            "channel_id": channel, "message_ts": "100.1", "text": "привет",
+            "user_id": "U1", "channel_name": channel,
+        }, source=journal.SOURCE_SWEEP)
+
+    assert await journal.mark_replied(ctx, "C1", "100.1") is True
+
+    rows = await journal.recent(ctx)
+    marked = {r["channel_id"] for r in rows if r.get("replied")}
+    waiting = {r["channel_id"] for r in rows if not r.get("replied")}
+
+    assert marked == {"C1"}, f"отмечен не тот канал: {marked}"
+    assert waiting == {"C2"}, f"не тот канал остался ждать: {waiting}"
+
+
+async def test_a_thread_reply_closes_the_message_it_answers(ctx):
+    """Replies address a THREAD; the journal stores each message by its own ts.
+
+    A top-level message answered inside its thread must stop looking
+    unanswered, or the guard re-answers it. Marking only the row whose ts
+    equals thread_ts is not enough on its own — hence a thread-aware mark.
+    """
+    import journal
+
+    await journal.record(ctx, {
+        "channel_id": "C1", "message_ts": "100.1", "text": "вопрос",
+        "user_id": "U1", "channel_name": "general", "mention_of_bot": True,
+        "reply_thread_ts": "100.1",
+    }, source=journal.SOURCE_SWEEP)
+    # A follow-up inside the same thread, with its own ts.
+    await journal.record(ctx, {
+        "channel_id": "C1", "message_ts": "100.9", "text": "ещё вопрос",
+        "user_id": "U1", "channel_name": "general", "is_thread_reply": True,
+        "thread_ts": "100.1", "reply_thread_ts": "100.1",
+    }, source=journal.SOURCE_SWEEP)
+
+    marked = await journal.mark_thread_replied(ctx, "C1", "100.1",
+                                              reply_ts="300.3")
+
+    assert marked == 2, f"ожидалось 2 отметки, получено {marked}"
+    assert await journal.recent(ctx, unresolved_only=True) == []
+
+
+async def test_marking_an_unknown_message_is_not_an_error(ctx):
+    """Nothing to mark is a fact, not a failure — it must not raise."""
+    import journal
+
+    assert await journal.mark_replied(ctx, "C1", "999.9") is False
+    assert await journal.mark_thread_replied(ctx, "C1", "999.9") == 0
+    assert await journal.mark_replied(ctx, "", "") is False

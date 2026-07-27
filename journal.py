@@ -401,3 +401,102 @@ def history_to_normalised(message: dict, *, conversation: dict,
                                                   channels or {})
     normalised["permalink"] = so.permalink_of(message)
     return normalised
+
+
+# --- reply bookkeeping -------------------------------------------------------
+
+async def mark_replied(ctx, channel_id: str, message_ts: str, *,
+                       reply_ts: str = "") -> bool:
+    """Record that this message has been answered. True if a row was updated.
+
+    THIS IS THE LOOP GUARD, not a nicety. `recent(unresolved_only=True)` has
+    always filtered on `replied`, but nothing ever WROTE the field -- so the
+    filter passed everything through and "messages with no reply yet" meant
+    "every message". A scheduled rule built on that would answer the same
+    person on every single run: an hourly stranger repeating itself in someone
+    else's Slack. The failure is not a wrong answer, it is harassment.
+
+    Keyed on (channel_id, message_ts) -- the same identity the dedupe key uses.
+    A ts alone is not unique across conversations.
+
+    Never raises. If the mark cannot be saved the caller has already sent its
+    reply, and crashing afterwards would turn a bookkeeping problem into a
+    visible failure. It is logged instead, and the worst case is one repeated
+    answer rather than a lost one.
+    """
+    if not channel_id or not message_ts:
+        return False
+
+    key = message_key(channel_id, message_ts)
+    try:
+        doc = await _find(ctx, JOURNAL_COLLECTION, "message_key", key)
+        if doc is None or not getattr(doc, "id", ""):
+            return False
+        data = dict(_row(doc))
+        data["replied"] = True
+        data["replied_at"] = time.time()
+        if reply_ts:
+            data["reply_ts"] = reply_ts
+        await ctx.store.update(JOURNAL_COLLECTION, doc.id, data)
+        return True
+    except Exception:
+        try:
+            await ctx.log("Slack reply mark could not be saved", level="warn")
+        except Exception:
+            pass
+        return False
+
+
+async def mark_thread_replied(ctx, channel_id: str, thread_ts: str, *,
+                              reply_ts: str = "") -> int:
+    """Mark every journalled message of one thread as answered. Returns count.
+
+    A reply is addressed to a THREAD, not to a row: Slack's `thread_ts` names
+    the parent, while the journal stores each message under its own ts. Marking
+    only the row whose ts equals thread_ts would leave a top-level message that
+    was answered in a thread still looking unanswered -- and the loop guard
+    would answer it again on the next run.
+
+    Bounded scan in Python, like `recent`: the store double supports equality
+    only and cannot express "ts OR reply_thread_ts".
+    """
+    if not channel_id or not thread_ts:
+        return 0
+
+    marked = 0
+    try:
+        docs = await _all(ctx, JOURNAL_COLLECTION)
+    except Exception:
+        return 0
+
+    for doc in docs:
+        row = _row(doc)
+        if str(row.get("channel_id") or "") != channel_id:
+            continue
+        if row.get("replied"):
+            continue
+        # Either the parent itself, or any message whose reply belongs in this
+        # same thread.
+        own_ts = str(row.get("message_ts") or "")
+        target = str(row.get("reply_thread_ts") or own_ts)
+        if thread_ts not in (own_ts, target):
+            continue
+        try:
+            data = dict(row)
+            data["replied"] = True
+            data["replied_at"] = time.time()
+            if reply_ts:
+                data["reply_ts"] = reply_ts
+            await ctx.store.update(JOURNAL_COLLECTION, doc.id, data)
+            marked += 1
+        except Exception:
+            continue
+
+    if not marked:
+        return 0
+    try:
+        await ctx.log(f"Slack: marked {marked} message(s) as answered",
+                      level="info")
+    except Exception:
+        pass
+    return marked

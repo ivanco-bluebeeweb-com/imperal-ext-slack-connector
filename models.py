@@ -515,13 +515,20 @@ class AccessReport(_Named):
 
 
 class MessageAck(_Named):
-    """Confirmation of a write against a message."""
+    """Confirmation of a write against a message.
+
+    `marked_answered` reports how many journalled messages this reply closed
+    out. It is surfaced rather than kept internal because "did my reply
+    actually mark the thread as handled?" is the difference between answering
+    someone once and answering them every hour.
+    """
     channel: str = ""
     channel_id: str = ""
     ts: str = ""
     action: str = ""
     permalink: str = ""
     detail: str = ""
+    marked_answered: int = 0
 
     _id_field: ClassVar[str] = "ts"
     _title_field: ClassVar[str] = "channel"

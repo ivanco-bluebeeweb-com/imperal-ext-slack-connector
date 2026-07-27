@@ -249,3 +249,73 @@ def test_deleting_a_message_is_declared_destructive():
     action_type = (spec.get("action_type") if isinstance(spec, dict)
                    else getattr(spec, "action_type", ""))
     assert action_type == "destructive"
+
+
+# --- replying closes the loop ------------------------------------------------
+
+async def test_a_threaded_reply_marks_the_message_as_answered(
+        connected_ctx, http):
+    """Sending the reply and recording it are ONE operation, not two.
+
+    If marking were left to the caller, every future path that replies would
+    have to remember — and the one that forgets re-answers the same person on
+    every scheduled run. Doing it where the reply actually succeeds is the only
+    place that cannot drift out of sync with what Slack really received.
+    """
+    import journal
+
+    await journal.record(connected_ctx, {
+        "channel_id": "C2", "message_ts": "500.1", "text": "@Imperal помоги",
+        "user_id": "U9", "user_display_name": "Vlad", "channel_name": "general",
+        "mention_of_bot": True, "reply_thread_ts": "500.1",
+    }, source=journal.SOURCE_SWEEP)
+
+    assert len(await journal.recent(connected_ctx, unresolved_only=True)) == 1
+
+    http.push(auth_test_payload())
+    http.push(ok(channels=[channel_payload(channel_id="C2", name="general")]))
+    http.push(ok(channel="C2", ts="600.2", message=message_payload()))
+
+    result = await hw.send_message(connected_ctx, hw.SendMessageParams(
+        channel="general", text="уже смотрю", thread_ts="500.1"))
+
+    assert result.status == "success", result.error
+    assert result.data.marked_answered == 1, (
+        "ответ не закрыл обращение — правило ответит тому же человеку снова")
+
+    waiting = await journal.recent(connected_ctx, unresolved_only=True)
+    assert waiting == [], "обращение всё ещё числится без ответа"
+
+
+async def test_a_plain_channel_post_answers_nobody(connected_ctx, http):
+    """A top-level post is not an answer to anything.
+
+    Marking on every send would silence unanswered mentions the moment anyone
+    posted an unrelated announcement into the same channel — the messages would
+    quietly stop being waiting without anyone having replied to them.
+    """
+    import journal
+
+    # The pending mention carries the SAME ts the new post will be given.
+    # Without that collision a channel-blind "mark whatever ts we just posted"
+    # bug finds nothing and the test passes while the guard is broken — proved
+    # by sabotage, which is why the timestamps are deliberately equal here.
+    await journal.record(connected_ctx, {
+        "channel_id": "C2", "message_ts": "600.3", "text": "@Imperal помоги",
+        "user_id": "U9", "channel_name": "general", "mention_of_bot": True,
+        "reply_thread_ts": "600.3",
+    }, source=journal.SOURCE_SWEEP)
+
+    http.push(auth_test_payload())
+    http.push(ok(channels=[channel_payload(channel_id="C2", name="general")]))
+    http.push(ok(channel="C2", ts="600.3", message=message_payload()))
+
+    result = await hw.send_message(connected_ctx, hw.SendMessageParams(
+        channel="general", text="объявление для всех"))
+
+    assert result.status == "success", result.error
+    assert result.data.marked_answered == 0
+
+    still_waiting = await journal.recent(connected_ctx, unresolved_only=True)
+    assert len(still_waiting) == 1, (
+        "постороннее сообщение в канал не должно закрывать чужое обращение")

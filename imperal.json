@@ -1326,7 +1326,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Confirmation of a write against a message.",
+        "description": "Confirmation of a write against a message.\n\n`marked_answered` reports how many journalled messages this reply closed\nout. It is surfaced rather than kept internal because \"did my reply\nactually mark the thread as handled?\" is the difference between answering\nsomeone once and answering them every hour.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1427,6 +1427,11 @@
             "default": "",
             "title": "Detail",
             "type": "string"
+          },
+          "marked_answered": {
+            "default": 0,
+            "title": "Marked Answered",
+            "type": "integer"
           }
         },
         "title": "MessageAck",
@@ -1481,7 +1486,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Confirmation of a write against a message.",
+        "description": "Confirmation of a write against a message.\n\n`marked_answered` reports how many journalled messages this reply closed\nout. It is surfaced rather than kept internal because \"did my reply\nactually mark the thread as handled?\" is the difference between answering\nsomeone once and answering them every hour.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1582,6 +1587,11 @@
             "default": "",
             "title": "Detail",
             "type": "string"
+          },
+          "marked_answered": {
+            "default": 0,
+            "title": "Marked Answered",
+            "type": "integer"
           }
         },
         "title": "MessageAck",
@@ -1630,7 +1640,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Confirmation of a write against a message.",
+        "description": "Confirmation of a write against a message.\n\n`marked_answered` reports how many journalled messages this reply closed\nout. It is surfaced rather than kept internal because \"did my reply\nactually mark the thread as handled?\" is the difference between answering\nsomeone once and answering them every hour.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1731,6 +1741,11 @@
             "default": "",
             "title": "Detail",
             "type": "string"
+          },
+          "marked_answered": {
+            "default": 0,
+            "title": "Marked Answered",
+            "type": "integer"
           }
         },
         "title": "MessageAck",
@@ -1791,7 +1806,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Confirmation of a write against a message.",
+        "description": "Confirmation of a write against a message.\n\n`marked_answered` reports how many journalled messages this reply closed\nout. It is surfaced rather than kept internal because \"did my reply\nactually mark the thread as handled?\" is the difference between answering\nsomeone once and answering them every hour.",
         "properties": {
           "id": {
             "anyOf": [
@@ -1892,6 +1907,11 @@
             "default": "",
             "title": "Detail",
             "type": "string"
+          },
+          "marked_answered": {
+            "default": 0,
+            "title": "Marked Answered",
+            "type": "integer"
           }
         },
         "title": "MessageAck",
@@ -1946,7 +1966,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Confirmation of a write against a message.",
+        "description": "Confirmation of a write against a message.\n\n`marked_answered` reports how many journalled messages this reply closed\nout. It is surfaced rather than kept internal because \"did my reply\nactually mark the thread as handled?\" is the difference between answering\nsomeone once and answering them every hour.",
         "properties": {
           "id": {
             "anyOf": [
@@ -2047,6 +2067,11 @@
             "default": "",
             "title": "Detail",
             "type": "string"
+          },
+          "marked_answered": {
+            "default": 0,
+            "title": "Marked Answered",
+            "type": "integer"
           }
         },
         "title": "MessageAck",
