@@ -75,26 +75,10 @@ MAX_MESSAGES_PER_CONVERSATION = 50
 SOURCE_PUSH = "push"
 SOURCE_SWEEP = "sweep"
 
-# The sweep interval, defined ONCE. The schedule decorator and the status report
-# both read it from here: a report that hardcoded its own copy could claim an
-# interval the schedule does not actually use, and that kind of lie survives
-# every test because nothing ever compares the two strings.
-#
-# EVERY TEN MINUTES, not hourly. Hourly was right while this schedule only
-# COLLECTED messages -- an archive an hour behind is still a usable archive. It
-# stopped being right the moment replying rode along: someone writes to Webbee
-# and waits up to 59 minutes for an answer, which reads as being ignored, and
-# "she answers when you ask her" is not true at that latency.
-#
-# Ten and not one: this polls somebody else's API forever. Six passes an hour
-# over the reachable conversations stays far inside Slack's limits (the cursor
-# makes an idle pass nearly free -- it reads and stops), while a minute-by-minute
-# crawl would spend sixty times the calls to shave off seconds nobody notices in
-# a chat conversation.
-#
-# The offset is kept off the hour boundary on purpose: :00 is when every
-# scheduled job everywhere fires at once.
-SWEEP_CRON = "*/10 * * * *"
+# NOTE: the sweep interval is NOT a constant here any more. It is a setting the
+# user changes at any time -- see sweeptimer, which owns both the tick that wakes
+# the schedule up and the chosen interval it obeys. A constant left behind in
+# this module would be read as authoritative and quietly contradict the setting.
 
 
 def message_key(channel_id: str, message_ts: str) -> str:

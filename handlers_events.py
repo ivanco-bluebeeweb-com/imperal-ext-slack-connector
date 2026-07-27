@@ -23,6 +23,7 @@ import journal
 import shared
 import slack_client as sc
 import slack_objects as so
+import sweeptimer
 from app import chat
 from models import (
     ConnectEventsParams,
@@ -209,6 +210,9 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
     # refused delivery records no message, so "0 pushed" covers both "Slack is
     # not calling" and "Slack is calling and being turned away".
     delivery = await inbound.delivery_report(ctx)
+    # How often the sweep actually runs is a SETTING now, so it has to be read
+    # rather than described from memory.
+    timer_state = await sweeptimer.describe(ctx)
     attempts = int(delivery.get("attempts") or 0)
     refused = int(delivery.get("refused") or 0)
     refusal_code = str(delivery.get("last_refusal_code") or "")
@@ -223,12 +227,14 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
         "",
         f"Messages recorded so far: {recorded} "
         f"({from_push} pushed by Slack, {from_sweep} read by the sweep)",
-        # The word "hourly" used to be baked in here. It became a lie the moment
-        # the interval changed, and a status line that describes the schedule
-        # wrongly is worse than one that says nothing -- so the cron string
-        # speaks for itself.
-        f"Scheduled sweep: on ({journal.SWEEP_CRON}) — reads every channel the "
-        "app was added to, plus direct messages. Needs no signing secret.",
+        # Read from the timer, never written from memory. This line has already
+        # been wrong twice: once when it said "hourly" after the interval
+        # changed, and once when it printed the platform tick as though that
+        # were the polling rate. Both times it described a schedule the app was
+        # not running.
+        f"Scheduled sweep: on ({timer_state['interval_text']}) — reads every "
+        "channel the app was added to, plus direct messages. Needs no signing "
+        "secret.",
         f"Events remembered for de-duplication: {seen}",
         "",
         # The line that separates "Slack is not calling" from "Slack is calling
@@ -289,7 +295,7 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
             messages_recorded=recorded,
             from_push=from_push,
             from_sweep=from_sweep,
-            sweep_schedule=journal.SWEEP_CRON,
+            sweep_schedule=timer_state['interval_text'],
             delivery_attempts=attempts,
             deliveries_refused=refused,
             last_refusal_code=refusal_code,

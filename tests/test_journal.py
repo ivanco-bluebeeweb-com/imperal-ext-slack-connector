@@ -18,6 +18,7 @@ proves only that it runs.
 
 import handlers_directory as hd
 import handlers_journal as hj
+import sweeptimer
 import inbound
 import journal
 from conftest import (auth_test_payload, channel_payload, err,
@@ -462,21 +463,58 @@ async def test_status_separates_push_readiness_from_awareness(connected_ctx, htt
     assert data.messages_recorded == 1
     assert data.from_sweep == 1
     assert data.state == "sweep only"
-    assert data.sweep_schedule == journal.SWEEP_CRON
+    # Reports the CHOSEN interval, in words -- never the platform tick. The
+    # tick is an implementation detail (an alarm clock); printing it here would
+    # tell the user Slack is polled every 5 minutes regardless of their setting.
+    assert data.sweep_schedule == sweeptimer.humanize_interval(
+        sweeptimer.DEFAULT_INTERVAL_MINUTES)
     # And it must not promise automation triggers that cannot be created.
     assert "not yet selectable" in data.detail
 
 
-async def test_status_does_not_claim_a_sweep_interval_it_does_not_use():
-    """The reported interval and the real schedule must be the same string.
+async def test_status_reports_the_interval_actually_in_effect(ctx):
+    """The reported interval must be the one the sweep obeys.
 
-    They used to be two literals, and nothing compared them -- so the report
-    could advertise an interval the schedule had long since changed away from.
+    It used to be two literals with nothing comparing them, so the report could
+    advertise an interval the schedule had changed away from. The shape of that
+    bug survived the redesign: the schedule now fires on a TICK, and printing
+    the tick would tell the user Slack is polled every 5 minutes no matter what
+    they chose.
+    """
+    import handlers_events as he
+
+    await sweeptimer.set_interval(ctx, minutes=180)
+
+    result = await he.inbound_status(ctx, he.InboundStatusParams())
+
+    assert result.status == "success", result.error
+    assert result.data.sweep_schedule == "каждые 3 часа"
+    # And emphatically NOT the platform tick.
+    assert sweeptimer.SWEEP_TICK_CRON not in result.data.sweep_schedule
+
+
+def test_the_tick_can_deliver_the_finest_interval_offered():
+    """The tick sets the FLOOR on responsiveness -- nothing finer is achievable.
+
+    If the tick were coarser than the minimum interval, "every 5 minutes" would
+    silently become every 10: nothing would be awake to notice the interval had
+    elapsed. The two numbers are set in different places, so they are compared
+    here rather than trusted to stay in step.
     """
     import main  # noqa: F401
     from app import ext
 
-    assert ext.schedules["slack_catch_up"].cron == journal.SWEEP_CRON
+    assert ext.schedules["slack_catch_up"].cron == sweeptimer.SWEEP_TICK_CRON
+    assert sweeptimer.TICK_MINUTES <= sweeptimer.MIN_INTERVAL_MINUTES, (
+        f"тик раз в {sweeptimer.TICK_MINUTES} мин не может обеспечить "
+        f"интервал {sweeptimer.MIN_INTERVAL_MINUTES} мин")
+
+    # The tick string and TICK_MINUTES must agree, or the comparison above is
+    # checking a number nobody uses.
+    minute_field = sweeptimer.SWEEP_TICK_CRON.split()[0]
+    assert minute_field == f"*/{sweeptimer.TICK_MINUTES}", (
+        f"строка тика {sweeptimer.SWEEP_TICK_CRON!r} расходится с "
+        f"TICK_MINUTES={sweeptimer.TICK_MINUTES}")
 
 
 # --- joining channels --------------------------------------------------------

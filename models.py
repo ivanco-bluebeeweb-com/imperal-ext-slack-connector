@@ -190,6 +190,29 @@ class AutoReplyParams(BaseModel):
         "", description="Optional reason, kept with the setting for context")
 
 
+class SweepTimerParams(BaseModel):
+    """Change how often Slack is checked for new messages, or pause checking.
+
+    BOTH fields default to None, meaning "leave this as it is". That is the
+    difference between "check every 30 minutes" and "pause": a paused=True with
+    an interval defaulting to some number would silently overwrite the interval
+    the user chose, so resuming would resume at the wrong speed. None is the only
+    honest default for a partial update.
+    """
+    minutes: int | None = Field(
+        None, description="How often to check Slack for new messages, in "
+                          "minutes. 5 to 1440 (24 hours). Omit to keep the "
+                          "current interval.")
+    paused: bool | None = Field(
+        None, description="True stops scheduled checking (Webbee still checks "
+                          "when asked); false resumes it. Omit to leave it "
+                          "unchanged.")
+
+
+class SweepTimerStatusParams(BaseModel):
+    """No inputs: it reports the timer, which is not parameterised."""
+
+
 class SendMessageParams(WorkspaceScoped):
     channel: str = Field(
         ..., description="Channel name or id to post to, e.g. '#general'. A "
@@ -565,6 +588,17 @@ class AutoReplyStatus(_Named):
 
     _id_field: ClassVar[str] = "kind"
     _title_field: ClassVar[str] = "detail"
+
+
+class SweepTimerStatus(_Named):
+    """The collection timer: interval, whether it is paused, and what is next."""
+    interval_minutes: int = 0
+    interval_text: str = ""
+    paused: bool = False
+    tick: str = ""
+    last_run: str = ""
+    next_run: str = ""
+    detail: str = ""
 
 
 class ChannelAck(_Named):

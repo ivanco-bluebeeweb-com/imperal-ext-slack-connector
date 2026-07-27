@@ -29,6 +29,7 @@ import accounts as acc
 import autoreply
 import inbound
 import journal
+import sweeptimer
 import shared
 import slack_client as sc
 import slack_objects as so
@@ -37,6 +38,9 @@ from models import (
     AutoReplyParams,
     AutoReplyStatus,
     AutoReplyStatusParams,
+    SweepTimerParams,
+    SweepTimerStatus,
+    SweepTimerStatusParams,
     JoinChannelsParams,
     JoinReport,
     CatchUpParams,
@@ -387,16 +391,22 @@ async def list_inbound(ctx, params: ListInboundParams) -> ActionResult:
 # consult into awareness that keeps itself current, and it needs neither the
 # signing secret nor an automations slot.
 #
-# The interval lives in journal.SWEEP_CRON, where the reasoning for its value
-# is written down. It was hourly while this pass only COLLECTED messages; it is
-# every ten minutes now that replying rides along, because a person waiting an
-# hour for an answer has been ignored, not answered. When push starts working
-# the schedule costs almost nothing -- every message is already known, so each
-# pass reads the cursor and stops.
+# THE CRON HERE IS A TICK, NOT THE POLLING INTERVAL.
+#
+# The platform reads this decorator when the app is REGISTERED, so the cron
+# string is fixed at deploy time -- which means "let the user change how often
+# Slack is checked" cannot be done by editing it. Instead the schedule fires
+# often and cheaply, and sweeptimer.due() decides whether the chosen interval
+# has actually elapsed. A tick that is not due returns after one small store
+# read, having made ZERO Slack calls, so a long interval is genuinely cheaper
+# than a short one even though the tick rate never changes.
+#
+# The interval itself is a setting (see sweeptimer): changing it takes effect on
+# the next tick, with no deploy.
 
-@ext.schedule("slack_catch_up", cron=journal.SWEEP_CRON)
+@ext.schedule("slack_catch_up", cron=sweeptimer.SWEEP_TICK_CRON)
 async def scheduled_catch_up(ctx):
-    """Run the sweep on schedule, for every connected workspace.
+    """Sweep when the chosen interval says so, for every connected workspace.
 
     Deliberately runs the SAME code path as the tool. A schedule with its own
     copy of the sweep is a second definition of "a message", and the two drift
@@ -404,9 +414,25 @@ async def scheduled_catch_up(ctx):
     what the user sees when they check by hand.
 
     Never raises. A scheduled task that throws is retried or disabled by the
-    platform, and neither reaction helps here: the next hour's pass picks up
-    whatever this one missed, because the cursor only advances on success.
+    platform, and neither reaction helps here: the next pass picks up whatever
+    this one missed, because the cursor only advances on success.
     """
+    # THE GATE. Checked before anything else: a tick that is not due must not
+    # touch Slack, or the setting would be decorative.
+    ready, why = await sweeptimer.due(ctx)
+    if not ready:
+        return
+
+    # Recorded BEFORE the pass, not after. If the sweep is slow or throws, the
+    # interval is still measured from when this attempt began -- otherwise a
+    # failing pass would re-run on every single tick, turning a Slack outage
+    # into the fastest polling this app has ever done.
+    await sweeptimer.mark_ran(ctx)
+
+    if why == "clock_moved":
+        await ctx.log("Slack sweep timer saw the clock move backwards; "
+                      "sweeping now", level="warn")
+
     try:
         result = await catch_up(ctx, CatchUpParams())
     except Exception:
@@ -601,6 +627,10 @@ async def set_autoreply(ctx, params: AutoReplyParams) -> ActionResult:
             sc.SLACK_SETTING_WRITE_FAILED)
 
     waiting = len(await autoreply.pending(ctx))
+    # The reply latency a person actually experiences is the SWEEP interval, not
+    # anything auto-reply owns: replies ride the sweep. Reporting a hardcoded
+    # figure here is how a status line ends up contradicting the timer.
+    timer_state = await sweeptimer.describe(ctx)
     if params.enabled:
         detail = "Автоответы включены"
         summary = (f"Автоответы включены. Ждут ответа: {waiting}."
@@ -615,7 +645,7 @@ async def set_autoreply(ctx, params: AutoReplyParams) -> ActionResult:
         summary=summary,
         data=AutoReplyStatus(
             enabled=params.enabled, waiting=waiting,
-            schedule=journal.SWEEP_CRON,
+            schedule=timer_state["interval_text"],
             max_per_pass=autoreply.MAX_REPLIES_PER_RUN,
             changed_at=(await autoreply.describe(ctx))["changed_at"],
             note=params.note, detail=detail))
@@ -631,6 +661,7 @@ async def set_autoreply(ctx, params: AutoReplyParams) -> ActionResult:
 async def autoreply_status(ctx, params: AutoReplyStatusParams) -> ActionResult:
     """State of automatic answering, and what it would do next."""
     state = await autoreply.describe(ctx)
+    timer_state = await sweeptimer.describe(ctx)
     enabled = state["enabled"]
     waiting_rows = await autoreply.pending(ctx)
     waiting = len(waiting_rows)
@@ -653,7 +684,102 @@ async def autoreply_status(ctx, params: AutoReplyStatusParams) -> ActionResult:
         summary=summary,
         data=AutoReplyStatus(
             enabled=enabled, waiting=waiting,
-            schedule=journal.SWEEP_CRON,
+            schedule=timer_state["interval_text"],
             max_per_pass=autoreply.MAX_REPLIES_PER_RUN,
             changed_at=state["changed_at"], note=state["note"],
             detail=detail))
+
+
+# --- the collection timer, as a setting --------------------------------------
+# Until this existed the interval was a constant: changing it meant editing a
+# source file and redeploying, which is not something a user can do. The value
+# is now stored, and these two functions are how it is read and written.
+
+@chat.function(
+    "set_sweep_timer",
+    "Change how often Webbee checks Slack for new messages (5 minutes to 24 "
+    "hours), or pause scheduled checking.",
+    action_type="write", chain_callable=True,
+    effects=["slack.sweep_timer.changed"],
+    event="slack-connector.set_sweep_timer",
+    data_model=SweepTimerStatus,
+)
+async def set_sweep_timer(ctx, params: SweepTimerParams) -> ActionResult:
+    """Set the interval, the paused flag, or both.
+
+    Refuses a call that asks for nothing rather than reporting a cheerful
+    success: "set the timer" with no value is an incomplete instruction, and
+    answering it with the unchanged state reads as though something was applied.
+    """
+    if params.minutes is None and params.paused is None:
+        return ActionResult.error(
+            "Скажи, что поменять: интервал в минутах (от 5 до 1440) "
+            "или пауза.",
+            code=sc.SLACK_VALIDATION_FAILED)
+
+    outcome = await sweeptimer.set_interval(
+        ctx, minutes=params.minutes, paused=params.paused)
+
+    if not outcome["saved"]:
+        return ActionResult.error(
+            "Не удалось сохранить настройку таймера. Попробуй ещё раз.",
+            code=sc.SLACK_SETTING_WRITE_FAILED)
+
+    state = await sweeptimer.describe(ctx)
+    reply_note = (" Автоответы включены, значит и они пойдут в этом ритме."
+                  if await autoreply.is_enabled(ctx) else "")
+
+    if state["paused"]:
+        summary = ("Плановая проверка Slack на паузе. Интервал сохранён "
+                   f"({state['interval_text']}) — вернётся при возобновлении. "
+                   "Проверить вручную можно в любой момент.")
+    else:
+        summary = f"Теперь Webbee проверяет Slack {state['interval_text']}."
+        if outcome["clamped"]:
+            # Said out loud: asking for 1 minute and silently getting 5 is a
+            # setting that disagrees with what the user typed.
+            summary += (" Запрошенное значение вне допустимого диапазона "
+                        f"({sweeptimer.MIN_INTERVAL_MINUTES}–"
+                        f"{sweeptimer.MAX_INTERVAL_MINUTES} мин), "
+                        "поэтому взято ближайшее возможное.")
+        summary += reply_note
+
+    return ActionResult.success(summary=summary, data=_timer_entity(state))
+
+
+@chat.function(
+    "sweep_timer_status",
+    "Report how often Webbee checks Slack for new messages, whether checking "
+    "is paused, and when the next check is due.",
+    action_type="read", chain_callable=True,
+    data_model=SweepTimerStatus,
+)
+async def sweep_timer_status(ctx, params: SweepTimerStatusParams) -> ActionResult:
+    """What the timer is set to, and when it next fires."""
+    state = await sweeptimer.describe(ctx)
+
+    if state["paused"]:
+        summary = ("Плановая проверка Slack на паузе. Сохранённый интервал: "
+                   f"{state['interval_text']}.")
+    else:
+        summary = f"Webbee проверяет Slack {state['interval_text']}."
+        if state["next_run"]:
+            summary += f" Следующая проверка: {state['next_run']}."
+
+    return ActionResult.success(summary=summary, data=_timer_entity(state))
+
+
+def _timer_entity(state: dict) -> SweepTimerStatus:
+    """One place that shapes the timer entity, so the two tools cannot drift."""
+    title = (f"Проверка Slack на паузе ({state['interval_text']})"
+             if state["paused"]
+             else f"Проверка Slack: {state['interval_text']}")
+    return SweepTimerStatus(
+        interval_minutes=state["interval_minutes"],
+        interval_text=state["interval_text"],
+        paused=state["paused"],
+        tick=sweeptimer.SWEEP_TICK_CRON,
+        last_run=state["last_run"],
+        next_run=state["next_run"],
+        detail=title,
+        title=title)

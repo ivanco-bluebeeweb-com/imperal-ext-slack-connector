@@ -4206,13 +4206,306 @@
       "long_running": false,
       "scopes": [],
       "owner_chat_tool": "slack"
+    },
+    {
+      "name": "set_sweep_timer",
+      "description": "Change how often Webbee checks Slack for new messages (5 minutes to 24 hours), or pause scheduled checking.",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.sweep_timer.changed"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Change how often Slack is checked for new messages, or pause checking.\n\nBOTH fields default to None, meaning \"leave this as it is\". That is the\ndifference between \"check every 30 minutes\" and \"pause\": a paused=True with\nan interval defaulting to some number would silently overwrite the interval\nthe user chose, so resuming would resume at the wrong speed. None is the only\nhonest default for a partial update.",
+        "properties": {
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "How often to check Slack for new messages, in minutes. 5 to 1440 (24 hours). Omit to keep the current interval.",
+            "title": "Minutes"
+          },
+          "paused": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "True stops scheduled checking (Webbee still checks when asked); false resumes it. Omit to leave it unchanged.",
+            "title": "Paused"
+          }
+        },
+        "title": "SweepTimerParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "The collection timer: interval, whether it is paused, and what is next.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "interval_minutes": {
+            "default": 0,
+            "title": "Interval Minutes",
+            "type": "integer"
+          },
+          "interval_text": {
+            "default": "",
+            "title": "Interval Text",
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "tick": {
+            "default": "",
+            "title": "Tick",
+            "type": "string"
+          },
+          "last_run": {
+            "default": "",
+            "title": "Last Run",
+            "type": "string"
+          },
+          "next_run": {
+            "default": "",
+            "title": "Next Run",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "SweepTimerStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.set_sweep_timer",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "sweep_timer_status",
+      "description": "Report how often Webbee checks Slack for new messages, whether checking is paused, and when the next check is due.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "No inputs: it reports the timer, which is not parameterised.",
+        "properties": {},
+        "title": "SweepTimerStatusParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "The collection timer: interval, whether it is paused, and what is next.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "interval_minutes": {
+            "default": 0,
+            "title": "Interval Minutes",
+            "type": "integer"
+          },
+          "interval_text": {
+            "default": "",
+            "title": "Interval Text",
+            "type": "string"
+          },
+          "paused": {
+            "default": false,
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "tick": {
+            "default": "",
+            "title": "Tick",
+            "type": "string"
+          },
+          "last_run": {
+            "default": "",
+            "title": "Last Run",
+            "type": "string"
+          },
+          "next_run": {
+            "default": "",
+            "title": "Next Run",
+            "type": "string"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "SweepTimerStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
     }
   ],
   "signals": [],
   "schedules": [
     {
       "name": "slack_catch_up",
-      "cron": "*/10 * * * *"
+      "cron": "*/5 * * * *"
     }
   ],
   "required_scopes": [],
