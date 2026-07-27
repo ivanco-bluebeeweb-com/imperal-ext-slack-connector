@@ -115,12 +115,20 @@ async def catch_up(ctx, params: CatchUpParams) -> ActionResult:
 
     reachable: list[dict] = []
     skipped: list[str] = []
+    # Tracked separately from the skip LIST because the advice depends on the
+    # CAUSE. Telling someone to /invite the app into a Slackbot DM -- which is
+    # what a blanket note did -- is the same class of wrong guidance as the DM
+    # advice this connector already had to correct: confidently actionable, and
+    # impossible to act on.
+    joinable_skips: list[str] = []
     for conv in conversations:
         ok, why = journal.is_reachable(conv)
         if ok:
             reachable.append(conv)
         else:
             skipped.append(f"{so.channel_name(conv)} ({why})")
+            if not conv.get("is_im") and not conv.get("is_mpim"):
+                joinable_skips.append(so.channel_name(conv))
 
     # DMs first: a direct message is addressed to the app specifically, so if a
     # bounded sweep can only reach part of the workspace, that part should be
@@ -225,10 +233,17 @@ async def catch_up(ctx, params: CatchUpParams) -> ActionResult:
     if swept:
         lines.append("New in: " + "; ".join(swept[:10]))
     if skipped:
+        note = ""
+        if joinable_skips:
+            # Only for channels, and it names the tool rather than the chore:
+            # public channels the app can join itself, private ones genuinely
+            # need a human inside.
+            note = (" Channels the app is not in can be joined with "
+                    "join_channels (public), or by /invite @imperal from "
+                    "inside a private channel.")
         lines.append(
-            f"Not swept ({len(skipped)}): " + "; ".join(skipped[:8])
-            + ". A channel needs the app in it — open it in Slack and type "
-              "/invite @imperal.")
+            f"Not swept ({len(skipped)}): " + "; ".join(skipped[:8]) + "."
+            + note)
 
     report = SweepReport(
         conversations_seen=len(conversations),

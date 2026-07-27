@@ -596,3 +596,41 @@ async def test_a_dry_run_changes_nothing(connected_ctx, http):
     assert result.data.joined_count == 0
     assert not any("conversations.join" in u for u in http.urls()), \
         "a dry run contacted Slack to join"
+
+
+async def test_a_skipped_dm_is_not_blamed_on_a_missing_invite(
+        connected_ctx, http):
+    """Advice must match the CAUSE, not just the fact of a skip.
+
+    A blanket "type /invite @imperal" was appended to every skip, including a
+    DM -- which has no invite at all. That is the same class of confidently
+    wrong guidance this connector already had to correct once.
+    """
+    http.push(auth_test_payload())
+    http.push(ok(channels=[_dm(channel_id="D9", user="USLACKBOT")]))
+    http.push(ok(members=[]))
+    http.push(ok(channels=[]))
+    # The DM read fails, so it lands in the skip list.
+    http.push(err("channel_not_found"))
+
+    result = await hj.catch_up(connected_ctx, hj.CatchUpParams())
+
+    assert result.status == "success", result.error
+    detail = result.data.detail
+    assert "/invite" not in detail, \
+        f"told the user to invite the app into a DM: {detail!r}"
+
+
+async def test_a_skipped_channel_points_at_the_join_tool(connected_ctx, http):
+    """When membership IS the cause, say so -- and name the tool that fixes it."""
+    http.push(auth_test_payload())
+    http.push(ok(channels=[
+        channel_payload(channel_id="C7", name="random", is_member=False),
+    ]))
+    http.push(ok(members=[]))
+    http.push(ok(channels=[]))
+
+    result = await hj.catch_up(connected_ctx, hj.CatchUpParams())
+
+    assert result.status == "success", result.error
+    assert "join_channels" in result.data.detail
