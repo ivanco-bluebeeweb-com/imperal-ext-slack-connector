@@ -419,3 +419,47 @@ async def test_the_scheduled_sweep_tolerates_a_dead_slack(connected_ctx, http):
     """No usable Slack response must not become a crashing background task."""
     # Nothing queued: every Slack call fails.
     await hj.scheduled_catch_up(connected_ctx)
+
+
+# --- the status report must not call a working setup "not ready" --------------
+
+async def test_status_separates_push_readiness_from_awareness(connected_ctx, http):
+    """"Push is off" and "Webbee is unaware" are different facts.
+
+    Reporting only push readiness produced "not ready" while the sweep was
+    recording messages perfectly well -- which invites debugging a feature that
+    already works, and hides the one thing actually missing (the secret).
+    """
+    import handlers_events as he
+
+    await journal.record(ctx=connected_ctx,
+                         normalised=_normalised(ts="1690003000.1"),
+                         source=journal.SOURCE_SWEEP)
+
+    http.push(auth_test_payload(team="Acme"))
+    result = await he.inbound_status(connected_ctx, he.InboundStatusParams())
+
+    assert result.status == "success", result.error
+    data = result.data
+    # No signing secret -> push is genuinely not ready...
+    assert data.ready is False
+    # ...but she IS aware, and the report has to say so.
+    assert data.aware is True
+    assert data.messages_recorded == 1
+    assert data.from_sweep == 1
+    assert data.state == "sweep only"
+    assert data.sweep_schedule == journal.SWEEP_CRON
+    # And it must not promise automation triggers that cannot be created.
+    assert "not yet selectable" in data.detail
+
+
+async def test_status_does_not_claim_a_sweep_interval_it_does_not_use():
+    """The reported interval and the real schedule must be the same string.
+
+    They used to be two literals, and nothing compared them -- so the report
+    could advertise an interval the schedule had long since changed away from.
+    """
+    import main  # noqa: F401
+    from app import ext
+
+    assert ext.schedules["slack_catch_up"].cron == journal.SWEEP_CRON

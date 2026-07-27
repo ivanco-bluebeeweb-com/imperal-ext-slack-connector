@@ -293,12 +293,24 @@ class _Named(sdl.Entity):
 
 
 class InboundStatus(_Named):
-    """Whether the Slack events endpoint is ready to receive."""
+    """Whether Slack messages are reaching Webbee, and by which route.
+
+    Two separate facts, deliberately not collapsed into one. `ready` is about
+    PUSH (endpoint + signing secret); `aware` is about whether messages are
+    actually being recorded at all -- which the hourly sweep achieves without
+    push. Reporting only the first said "not ready" while awareness worked fine,
+    which is how a working feature gets debugged as a broken one.
+    """
     endpoint_url: str = ""
     signing_secret_set: bool = False
     workspaces_connected: int = 0
     events_deduplicated: int = 0
     ready: bool = False
+    aware: bool = False
+    messages_recorded: int = 0
+    from_push: int = 0
+    from_sweep: int = 0
+    sweep_schedule: str = ""
     detail: str = ""
     state: str = ""
 

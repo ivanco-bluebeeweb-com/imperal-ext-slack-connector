@@ -75,6 +75,12 @@ MAX_MESSAGES_PER_CONVERSATION = 50
 SOURCE_PUSH = "push"
 SOURCE_SWEEP = "sweep"
 
+# The sweep interval, defined ONCE. The schedule decorator and the status report
+# both read it from here: a report that hardcoded its own copy could claim an
+# interval the schedule does not actually use, and that kind of lie survives
+# every test because nothing ever compares the two strings.
+SWEEP_CRON = "17 * * * *"
+
 
 def message_key(channel_id: str, message_ts: str) -> str:
     """Stable identity of one message.

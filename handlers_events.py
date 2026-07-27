@@ -19,6 +19,7 @@ from imperal_sdk import ActionResult
 
 import accounts as acc
 import inbound
+import journal
 import shared
 import slack_client as sc
 import slack_objects as so
@@ -191,36 +192,79 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
     except Exception:
         url = ("https://panel.imperal.io/v1/ext/slack-connector/"
                "webhook/events")
+    # How much has actually been recorded -- the difference between "configured"
+    # and "working". A report that only described configuration is what let this
+    # connector look broken while the sweep was quietly doing its job, and look
+    # fine while nothing at all was arriving.
+    stats: dict = {}
+    try:
+        stats = await journal.counts(ctx)
+    except Exception:
+        stats = {}
+    recorded = int(stats.get("total") or 0)
+    from_push = int(stats.get("from_push") or 0)
+    from_sweep = int(stats.get("from_sweep") or 0)
+
     lines = [
         f"Endpoint (paste into Slack → Event Subscriptions): {url}",
         ("Signing secret: configured" if secret
-         else "Signing secret: NOT SET — every delivery will be refused. "
+         else "Signing secret: NOT SET — Slack deliveries are refused. "
               "Copy it from Slack → Basic Information → Signing Secret."),
         (f"Workspaces connected: {len(usable)}" if usable
          else "Workspaces connected: none — paste a token first."),
+        "",
+        f"Messages recorded so far: {recorded} "
+        f"({from_push} pushed by Slack, {from_sweep} read by the hourly sweep)",
+        f"Hourly sweep: on ({journal.SWEEP_CRON}) — reads every channel the app "
+        "was "
+        "added to, plus direct messages. Needs no signing secret.",
         f"Events remembered for de-duplication: {seen}",
         "",
         "Subscribe to these bot events in Slack:",
         "  app_mention, message.channels, message.groups, message.im",
         "",
-        "Events raised into Imperal automations:",
+        # Named honestly. These are DECLARED by this app, but the platform's
+        # automations catalog does not list them, so a rule built on one fails
+        # with "Event not found". Calling them "raised into automations" sent
+        # the user off to build a trigger that cannot exist.
+        "Declared inbound events (not yet selectable as automation triggers "
+        "— the platform catalog does not list them):",
         f"  {inbound.EVENT_MESSAGE}",
         f"  {inbound.EVENT_MENTION}",
         f"  {inbound.EVENT_THREAD_REPLY}",
         f"  {inbound.EVENT_DM}",
     ]
 
-    ready = bool(secret and usable)
+    push_ready = bool(secret and usable)
+    # Awareness does NOT require push: the sweep covers it. This is the whole
+    # point of reporting the two separately.
+    aware = bool(usable)
+
+    if push_ready:
+        summary = ("Slack inbound is ready: messages are pushed instantly and "
+                   "the hourly sweep backs it up.")
+    elif aware:
+        summary = (f"Webbee is seeing Slack messages via the hourly sweep "
+                   f"({recorded} recorded). Instant push is still off — add "
+                   "the signing secret to enable it.")
+    else:
+        summary = "Slack is not connected yet — paste a bot token first."
+
     return ActionResult.success(
-        summary=("Slack inbound is ready." if ready
-                 else "Slack inbound is NOT ready yet — see the detail."),
+        summary=summary,
         data=InboundStatus(
             endpoint_url=url,
             signing_secret_set=bool(secret),
             workspaces_connected=len(usable),
             events_deduplicated=seen,
-            ready=ready,
-            state="ready" if ready else "not ready",
+            ready=push_ready,
+            aware=aware,
+            messages_recorded=recorded,
+            from_push=from_push,
+            from_sweep=from_sweep,
+            sweep_schedule=journal.SWEEP_CRON,
+            state=("ready" if push_ready
+                   else "sweep only" if aware else "not connected"),
             detail="\n".join(lines)))
 
 

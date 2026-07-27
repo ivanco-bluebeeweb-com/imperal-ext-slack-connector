@@ -359,7 +359,7 @@ async def list_inbound(ctx, params: ListInboundParams) -> ActionResult:
 # working the schedule costs almost nothing -- every message is already known,
 # so each pass reads the cursor and stops.
 
-@ext.schedule("slack_catch_up", cron="17 * * * *")
+@ext.schedule("slack_catch_up", cron=journal.SWEEP_CRON)
 async def scheduled_catch_up(ctx):
     """Run the sweep hourly, for every connected workspace.
 
