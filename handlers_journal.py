@@ -383,20 +383,20 @@ async def list_inbound(ctx, params: ListInboundParams) -> ActionResult:
 # --- the sweep, running on its own ------------------------------------------
 # Without this, awareness advances only when somebody CALLS catch_up -- which
 # makes "Webbee knows what was said in Slack" true only in hindsight, at the
-# moment of asking. An hourly schedule is what turns the journal from an archive
-# you consult into awareness that keeps itself current, and it needs neither the
+# moment of asking. A schedule is what turns the journal from an archive you
+# consult into awareness that keeps itself current, and it needs neither the
 # signing secret nor an automations slot.
 #
-# Hourly rather than every few minutes on purpose: this polls somebody else's
-# API on a recurring basis forever. One pass per hour over the reachable
-# conversations is enough to keep a working record without turning a background
-# task into sustained load on the workspace's rate limit. When push starts
-# working the schedule costs almost nothing -- every message is already known,
-# so each pass reads the cursor and stops.
+# The interval lives in journal.SWEEP_CRON, where the reasoning for its value
+# is written down. It was hourly while this pass only COLLECTED messages; it is
+# every ten minutes now that replying rides along, because a person waiting an
+# hour for an answer has been ignored, not answered. When push starts working
+# the schedule costs almost nothing -- every message is already known, so each
+# pass reads the cursor and stops.
 
 @ext.schedule("slack_catch_up", cron=journal.SWEEP_CRON)
 async def scheduled_catch_up(ctx):
-    """Run the sweep hourly, for every connected workspace.
+    """Run the sweep on schedule, for every connected workspace.
 
     Deliberately runs the SAME code path as the tool. A schedule with its own
     copy of the sweep is a second definition of "a message", and the two drift
@@ -413,7 +413,7 @@ async def scheduled_catch_up(ctx):
         await ctx.log("Slack scheduled catch-up failed", level="warn")
         return
 
-    # Logged at info only when something was actually learned -- an hourly
+    # Logged at info only when something was actually learned -- a recurring
     # "nothing new" line is noise that buries the entries worth reading.
     data = getattr(result, "data", None)
     new = int(getattr(data, "messages_new", 0) or 0) if data else 0

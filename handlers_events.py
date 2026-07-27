@@ -222,10 +222,13 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
          else "Workspaces connected: none — paste a token first."),
         "",
         f"Messages recorded so far: {recorded} "
-        f"({from_push} pushed by Slack, {from_sweep} read by the hourly sweep)",
-        f"Hourly sweep: on ({journal.SWEEP_CRON}) — reads every channel the app "
-        "was "
-        "added to, plus direct messages. Needs no signing secret.",
+        f"({from_push} pushed by Slack, {from_sweep} read by the sweep)",
+        # The word "hourly" used to be baked in here. It became a lie the moment
+        # the interval changed, and a status line that describes the schedule
+        # wrongly is worse than one that says nothing -- so the cron string
+        # speaks for itself.
+        f"Scheduled sweep: on ({journal.SWEEP_CRON}) — reads every channel the "
+        "app was added to, plus direct messages. Needs no signing secret.",
         f"Events remembered for de-duplication: {seen}",
         "",
         # The line that separates "Slack is not calling" from "Slack is calling
@@ -266,9 +269,9 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
 
     if push_ready:
         summary = ("Slack inbound is ready: messages are pushed instantly and "
-                   "the hourly sweep backs it up.")
+                   "the scheduled sweep backs it up.")
     elif aware:
-        summary = (f"Webbee is seeing Slack messages via the hourly sweep "
+        summary = (f"Webbee is seeing Slack messages via the scheduled sweep "
                    f"({recorded} recorded). Instant push is still off — add "
                    "the signing secret to enable it.")
     else:

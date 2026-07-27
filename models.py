@@ -339,7 +339,7 @@ class InboundStatus(_Named):
 
     Two separate facts, deliberately not collapsed into one. `ready` is about
     PUSH (endpoint + signing secret); `aware` is about whether messages are
-    actually being recorded at all -- which the hourly sweep achieves without
+    actually being recorded at all -- which the scheduled sweep achieves without
     push. Reporting only the first said "not ready" while awareness worked fine,
     which is how a working feature gets debugged as a broken one.
     """

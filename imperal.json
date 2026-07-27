@@ -3009,7 +3009,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Whether Slack messages are reaching Webbee, and by which route.\n\nTwo separate facts, deliberately not collapsed into one. `ready` is about\nPUSH (endpoint + signing secret); `aware` is about whether messages are\nactually being recorded at all -- which the hourly sweep achieves without\npush. Reporting only the first said \"not ready\" while awareness worked fine,\nwhich is how a working feature gets debugged as a broken one.",
+        "description": "Whether Slack messages are reaching Webbee, and by which route.\n\nTwo separate facts, deliberately not collapsed into one. `ready` is about\nPUSH (endpoint + signing secret); `aware` is about whether messages are\nactually being recorded at all -- which the scheduled sweep achieves without\npush. Reporting only the first said \"not ready\" while awareness worked fine,\nwhich is how a working feature gets debugged as a broken one.",
         "properties": {
           "id": {
             "anyOf": [
@@ -3192,7 +3192,7 @@
         "type": "object"
       },
       "return_schema": {
-        "description": "Whether Slack messages are reaching Webbee, and by which route.\n\nTwo separate facts, deliberately not collapsed into one. `ready` is about\nPUSH (endpoint + signing secret); `aware` is about whether messages are\nactually being recorded at all -- which the hourly sweep achieves without\npush. Reporting only the first said \"not ready\" while awareness worked fine,\nwhich is how a working feature gets debugged as a broken one.",
+        "description": "Whether Slack messages are reaching Webbee, and by which route.\n\nTwo separate facts, deliberately not collapsed into one. `ready` is about\nPUSH (endpoint + signing secret); `aware` is about whether messages are\nactually being recorded at all -- which the scheduled sweep achieves without\npush. Reporting only the first said \"not ready\" while awareness worked fine,\nwhich is how a working feature gets debugged as a broken one.",
         "properties": {
           "id": {
             "anyOf": [
@@ -4212,7 +4212,7 @@
   "schedules": [
     {
       "name": "slack_catch_up",
-      "cron": "17 * * * *"
+      "cron": "*/10 * * * *"
     }
   ],
   "required_scopes": [],

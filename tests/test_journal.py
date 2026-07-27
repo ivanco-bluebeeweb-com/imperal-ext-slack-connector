@@ -373,8 +373,21 @@ def test_the_sweep_is_actually_scheduled():
     assert "slack_catch_up" in ext.schedules, "the sweep does not run on its own"
     cron = ext.schedules["slack_catch_up"].cron
     assert len(cron.split()) == 5, f"not a cron expression: {cron!r}"
-    # Not every minute: this polls somebody else's API forever.
-    assert not cron.startswith("*"), f"sweeping too often: {cron!r}"
+
+    # NOT EVERY MINUTE: this polls somebody else's API forever, and a
+    # minute-by-minute crawl is how a background task becomes sustained load on
+    # a workspace's rate limit.
+    #
+    # The check used to be `not cron.startswith("*")`, which was a proxy for
+    # "too often" and rejected `*/10` -- a perfectly sane ten-minute interval --
+    # while happily accepting `0 * * * *` written as `0 0-23 * * *`. It measured
+    # the SHAPE of the string instead of the frequency it expresses, so the real
+    # invariant is asserted here: the minute field must be a step or a fixed
+    # value, never a bare star.
+    minute = cron.split()[0]
+    assert minute != "*", f"sweeping every minute: {cron!r}"
+    if minute.startswith("*/"):
+        assert int(minute[2:]) >= 5, f"sweeping too often: {cron!r}"
 
 
 async def test_the_scheduled_sweep_records_messages(connected_ctx, http):
