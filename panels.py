@@ -168,7 +168,7 @@ def _connect_view(records: list[dict]) -> ui.Component:
 
 
 def _events_view(records: list[dict], secret_set: bool,
-                 endpoint_url: str) -> ui.Component:
+                 endpoint_url: str, pushed_count: int = 0) -> ui.Component:
     """Set up INBOUND events: the endpoint URL, the secret, the subscriptions.
 
     Its own view because inbound setup happens in the SLACK console, not here,
@@ -197,11 +197,24 @@ def _events_view(records: list[dict], secret_set: bool,
                            "replies — and answer in the right place."),
     ]
 
-    if ready:
+    if ready and pushed_count > 0:
         children.append(ui.Alert(
-            message=("Inbound is configured. Mention the app in a channel it "
-                     "belongs to and the event reaches Imperal."),
+            message=(f"Inbound is working — {pushed_count} message(s) have "
+                     "arrived this way. Nothing left to do here."),
             type="success"))
+    elif ready:
+        # A saved secret is NOT proof of delivery. Announcing "configured, the
+        # event reaches Imperal" while zero messages have ever arrived is the
+        # silent failure this screen exists to prevent: steps 1, 3 and 4 happen
+        # in the SLACK console, and a secret saved here cannot tell whether
+        # anybody did them.
+        children.append(ui.Alert(
+            message=("Signing secret saved — that was step 2 of 4. Slack sends "
+                     "nothing until the rest is done in the Slack console: "
+                     "paste the Request URL (step 1), subscribe to the four "
+                     "bot events (step 3), then Reinstall the app (step 4). "
+                     "No message has arrived by push yet."),
+            type="warning"))
     elif not usable:
         children.append(ui.Alert(
             message=("Connect a workspace token first — an inbound event still "
@@ -497,7 +510,14 @@ async def slack_center(ctx, **kwargs):
         except Exception:
             url = (f"https://panel.imperal.io/v1/ext/{ext.app_id}"
                    "/webhook/events")
-        return _events_view(records, secret_set, url)
+        # The push COUNT, not just the secret: the banner has to tell "saved"
+        # apart from "actually arriving".
+        pushed = 0
+        try:
+            pushed = int((await journal.counts(ctx)).get("from_push") or 0)
+        except Exception:
+            pushed = 0
+        return _events_view(records, secret_set, url, pushed_count=pushed)
     return _workspaces_view(records, load_failed,
                             inbound_ready=await _signing_secret_is_set(ctx))
 

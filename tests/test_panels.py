@@ -424,3 +424,54 @@ async def test_the_events_screen_admits_automations_do_not_work_yet(ctx, http):
     dump = _dump(await panels.slack_center(ctx, view="events"))
     assert "ready to use as an automation trigger" not in dump
     assert "not available yet" in dump.lower()
+
+
+async def test_events_screen_does_not_call_a_saved_secret_a_working_setup(
+        connected_ctx, http):
+    """A saved secret is not proof that Slack delivers anything.
+
+    Three of the four steps happen in the SLACK console, and this app cannot
+    see whether anybody did them. Announcing "configured, the event reaches
+    Imperal" on the strength of a stored secret is the silent failure this
+    screen exists to prevent -- it is what made the connector look healthy for
+    days while nothing arrived.
+    """
+    from imperal_sdk.testing import MockSecretStore
+    from conftest import auth_test_payload
+
+    connected_ctx.secrets = MockSecretStore({
+        "slack_tokens": FAKE_BOT_TOKEN,
+        "slack_signing_secret": SIGNING_SECRET_VALUE,
+    })
+    http.push(auth_test_payload(team="Acme"))
+
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+
+    assert "step 2 of 4" in dump, \
+        "the screen claims success on a saved secret alone"
+    assert "Reinstall" in dump, "the remaining Slack-side steps are not named"
+
+
+async def test_events_screen_confirms_success_once_push_really_works(
+        connected_ctx, http):
+    """Once a message HAS arrived by push, say so plainly.
+
+    The warning must clear on evidence, not linger forever: a banner that never
+    goes away trains people to ignore banners.
+    """
+    import journal
+    from imperal_sdk.testing import MockSecretStore
+    from conftest import auth_test_payload
+
+    connected_ctx.secrets = MockSecretStore({
+        "slack_tokens": FAKE_BOT_TOKEN,
+        "slack_signing_secret": SIGNING_SECRET_VALUE,
+    })
+    await journal.record(connected_ctx, _sample_row(source="push"),
+                         source=journal.SOURCE_PUSH)
+    http.push(auth_test_payload(team="Acme"))
+
+    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
+
+    assert "Inbound is working" in dump
+    assert "step 2 of 4" not in dump
