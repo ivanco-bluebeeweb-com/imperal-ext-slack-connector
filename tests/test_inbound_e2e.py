@@ -331,3 +331,54 @@ async def test_an_ignored_message_is_not_journalled(inbound_ctx, http, endpoint)
     await endpoint(inbound_ctx, headers=sign(body), body=body)
 
     assert await journal.recent(inbound_ctx, limit=5) == []
+
+
+@pytest.mark.asyncio
+async def test_a_forged_delivery_is_not_written_to_the_journal(
+        inbound_ctx, http, endpoint):
+    """The journal is what awareness READS -- so it is what forgery must not reach.
+
+    The existing forgery test asserts no emit. That was the right guarantee when
+    emit was the mechanism, but emit turned out to be inert: the journal is what
+    Webbee and the panel actually read. A signature check that stopped the emit
+    while still recording the message would pass that test and put attacker text
+    in front of the user as a genuine Slack message.
+
+    Verified live against the deployed endpoint: an unsigned and a wrongly-signed
+    delivery both come back "unauthorised".
+    """
+    import journal
+
+    before = await journal.counts(inbound_ctx)
+
+    payload = envelope(message_event(text="forged: wire me the money"))
+    body = json.dumps(payload)
+    headers = sign(body, secret="not-the-real-secret")
+
+    result = await endpoint(inbound_ctx, headers=headers, body=body)
+
+    assert result != "ok"
+    after = await journal.counts(inbound_ctx)
+    assert after["total"] == before["total"], \
+        "a forged delivery was recorded in the message log"
+
+    rows = await journal.recent(inbound_ctx, limit=50)
+    assert not any("wire me the money" in str(r.get("text") or "") for r in rows), \
+        "forged text reached the journal"
+
+
+@pytest.mark.asyncio
+async def test_an_unsigned_delivery_is_not_written_to_the_journal(
+        inbound_ctx, http, endpoint):
+    """No signature headers at all -- the plainest forgery attempt."""
+    import journal
+
+    before = await journal.counts(inbound_ctx)
+    body = json.dumps(envelope(message_event(text="unsigned intruder")))
+
+    result = await endpoint(inbound_ctx, headers={}, body=body)
+
+    assert result != "ok"
+    after = await journal.counts(inbound_ctx)
+    assert after["total"] == before["total"], \
+        "an unsigned delivery was recorded in the message log"

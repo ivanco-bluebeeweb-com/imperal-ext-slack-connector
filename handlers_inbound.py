@@ -48,10 +48,14 @@ async def slack_events(ctx, headers: dict | None = None, body: str = "",
     Slack only cares that the status is 200 -- it ignores the body except for
     the url_verification challenge, which MUST be echoed back verbatim.
 
-    Every exit path returns 200 EXCEPT a failed signature check. That is
-    deliberate: a 500 makes Slack retry, and retrying an event this app has
-    decided to ignore (a bot message, a duplicate) would just repeat the same
-    decision three more times. "Accepted and dropped" is 200.
+    Every exit path returns 200, including a refusal: the platform wraps the
+    handler's return value in its own envelope, so this app cannot set a status
+    code (probed against the deployed endpoint -- a forged delivery comes back
+    HTTP 200 with the body "unauthorised"). That suits Slack, which only needs a
+    200, and suits this app, which wants no retry of an event it has already
+    decided to drop -- a 500 would make Slack repeat the same decision three
+    more times. The refusal is enforced by not RECORDING the message, not by the
+    status code.
     """
     headers = headers or {}
     payload = inbound.parse_body(body)
@@ -65,9 +69,19 @@ async def slack_events(ctx, headers: dict | None = None, body: str = "",
         await ctx.log("Slack URL verification challenge answered", level="info")
         return challenge
 
-    # 2. SIGNATURE -- the only path that refuses with a non-200. An unsigned or
-    #    wrongly signed request is not a Slack delivery, and there is nothing to
-    #    retry: refusing it is the correct final answer.
+    # 2. SIGNATURE -- an unsigned or wrongly signed request is not a Slack
+    #    delivery, and there is nothing to retry: refusing it is the correct
+    #    final answer. What matters is that the request is dropped BEFORE the
+    #    journal, because the journal is what awareness reads: recording first
+    #    and refusing after would put attacker text in front of the user as a
+    #    genuine Slack message.
+    #
+    #    NOT a non-200, despite what this comment used to claim. Probed against
+    #    the deployed endpoint: the platform wraps every handler return in its
+    #    own success envelope, so a refusal goes back as HTTP 200 with the body
+    #    "unauthorised". Harmless here (Slack only needs a 200 and this app
+    #    wants no retry of a request it has finally rejected) -- but the old
+    #    wording described a status code this app cannot actually set.
     secret = ""
     try:
         secret = (await ctx.secrets.get(inbound.SIGNING_SECRET_NAME)) or ""
