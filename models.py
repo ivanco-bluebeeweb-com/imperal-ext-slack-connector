@@ -311,6 +311,16 @@ class InboundStatus(_Named):
     from_push: int = 0
     from_sweep: int = 0
     sweep_schedule: str = ""
+    #: Delivery attempts, as observed at the endpoint itself.
+    #:
+    #: from_push == 0 has two completely different causes -- Slack never knocked
+    #: (Request URL missing, events not subscribed) or Slack knocked and was
+    #: refused (signature mismatch) -- and the fix differs entirely. Without
+    #: these the two are indistinguishable, and the evidence that separates them
+    #: went only to a log the user cannot read.
+    delivery_attempts: int = 0
+    deliveries_refused: int = 0
+    last_refusal_code: str = ""
     detail: str = ""
     state: str = ""
 

@@ -68,6 +68,20 @@ EVENT_LEDGER_TTL_SECONDS = 60 * 60
 EVENTS_COLLECTION = "slack_seen_events"
 CHANNELS_COLLECTION = "slack_channel_context"
 
+#: Where the fact of a DELIVERY ATTEMPT is recorded -- separate from the message
+#: journal, which only ever holds accepted messages.
+#:
+#: This exists because two very different failures looked identical from the
+#: outside: Slack never knocking at all (Request URL not saved, events not
+#: subscribed) and Slack knocking and being refused (signature mismatch). Both
+#: showed up only as "pushed: 0". The difference was written to ctx.log, which
+#: the user cannot read and neither can I -- so diagnosis was guesswork.
+#:
+#: Holds counters and the last refusal CODE. Never the signing secret, never a
+#: signature, never message text: a diagnostic must not become a data leak.
+DELIVERY_COLLECTION = "slack_delivery_probe"
+DELIVERY_KEY = "singleton"
+
 #: Subtypes that are still a HUMAN MESSAGE. Slack sends `file_share` and
 #: `thread_broadcast` as subtyped messages, and both carry real user text --
 #: dropping every subtype would silently lose a user who attached a file.
@@ -165,6 +179,64 @@ async def _upsert(ctx, collection: str, field: str, value: str,
         await ctx.store.update(collection, existing.id, data)
         return
     await ctx.store.create(collection, data)
+
+
+async def note_delivery(ctx, *, outcome: str, code: str = "") -> None:
+    """Record that Slack knocked, and how it went. Never raises.
+
+    Called on the delivery path, so a failure here must stay invisible to Slack:
+    an exception would turn "we could not write a diagnostic" into a 500 and a
+    retry storm.
+    """
+    try:
+        existing = await _find(ctx, DELIVERY_COLLECTION, "key", DELIVERY_KEY)
+        row = {}
+        if existing is not None:
+            # Stored fields live under .data, NOT on the Document itself --
+            # getattr(doc, "attempts") always returns the default, so the
+            # counters silently stayed at zero however many times Slack called.
+            # Same access pattern the rest of this module already uses.
+            prior = getattr(existing, "data", None) or {}
+            for field in ("attempts", "accepted", "refused", "challenges"):
+                row[field] = int(prior.get(field) or 0)
+        row["key"] = DELIVERY_KEY
+        row["attempts"] = int(row.get("attempts") or 0) + 1
+        bucket = {"accepted": "accepted", "refused": "refused",
+                  "challenge": "challenges"}.get(outcome)
+        if bucket:
+            row[bucket] = int(row.get(bucket) or 0) + 1
+        row["last_outcome"] = str(outcome or "")
+        row["last_at"] = time.time()
+        if outcome == "refused":
+            # The CODE only (e.g. SLACK_SIGNATURE_INVALID). Never the signature
+            # itself and never the body -- the code is what identifies the fix.
+            row["last_refusal_code"] = str(code or "")
+        await _upsert(ctx, DELIVERY_COLLECTION, "key", DELIVERY_KEY, row)
+    except Exception:
+        return
+
+
+async def delivery_report(ctx) -> dict:
+    """What is known about Slack's delivery attempts. Never raises."""
+    blank = {"attempts": 0, "accepted": 0, "refused": 0, "challenges": 0,
+             "last_outcome": "", "last_refusal_code": "", "last_at": 0.0}
+    try:
+        existing = await _find(ctx, DELIVERY_COLLECTION, "key", DELIVERY_KEY)
+    except Exception:
+        return blank
+    if existing is None:
+        return blank
+    out = dict(blank)
+    data = getattr(existing, "data", None) or {}
+    for field in ("attempts", "accepted", "refused", "challenges"):
+        out[field] = int(data.get(field) or 0)
+    out["last_outcome"] = str(data.get("last_outcome") or "")
+    out["last_refusal_code"] = str(data.get("last_refusal_code") or "")
+    try:
+        out["last_at"] = float(data.get("last_at") or 0)
+    except (TypeError, ValueError):
+        out["last_at"] = 0.0
+    return out
 
 
 async def already_processed(ctx, event_id: str) -> bool:

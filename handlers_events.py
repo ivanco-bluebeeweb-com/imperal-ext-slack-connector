@@ -205,6 +205,14 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
     from_push = int(stats.get("from_push") or 0)
     from_sweep = int(stats.get("from_sweep") or 0)
 
+    # Whether Slack ever KNOCKED, which the message counts cannot tell you: a
+    # refused delivery records no message, so "0 pushed" covers both "Slack is
+    # not calling" and "Slack is calling and being turned away".
+    delivery = await inbound.delivery_report(ctx)
+    attempts = int(delivery.get("attempts") or 0)
+    refused = int(delivery.get("refused") or 0)
+    refusal_code = str(delivery.get("last_refusal_code") or "")
+
     lines = [
         f"Endpoint (paste into Slack → Event Subscriptions): {url}",
         ("Signing secret: configured" if secret
@@ -219,6 +227,22 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
         "was "
         "added to, plus direct messages. Needs no signing secret.",
         f"Events remembered for de-duplication: {seen}",
+        "",
+        # The line that separates "Slack is not calling" from "Slack is calling
+        # and being refused". Both look like "0 pushed" from the message counts
+        # alone, and the fixes are completely different, so it is stated outright
+        # instead of leaving the user (and me) to guess.
+        (f"Delivery attempts seen at this endpoint: {attempts}"
+         + (f" — {refused} refused" if refused else "")
+         + (f" (last refusal: {refusal_code})" if refusal_code else "")),
+        ("  → Slack has never called this endpoint: the Request URL or the bot "
+         "event subscriptions are not saved in Slack yet."
+         if attempts == 0
+         else ("  → Slack IS calling, but deliveries are being refused. The "
+               "signing secret stored here does not match the one in Slack — "
+               "copy it again from Slack → Basic Information."
+               if refused and not from_push
+               else "  → Deliveries are arriving and being accepted.")),
         "",
         "Subscribe to these bot events in Slack:",
         "  app_mention, message.channels, message.groups, message.im",
@@ -263,6 +287,9 @@ async def inbound_status(ctx, params: InboundStatusParams) -> ActionResult:
             from_push=from_push,
             from_sweep=from_sweep,
             sweep_schedule=journal.SWEEP_CRON,
+            delivery_attempts=attempts,
+            deliveries_refused=refused,
+            last_refusal_code=refusal_code,
             state=("ready" if push_ready
                    else "sweep only" if aware else "not connected"),
             detail="\n".join(lines)))
@@ -369,10 +396,18 @@ async def connect_events(ctx, params: ConnectEventsParams) -> ActionResult:
                  "Event Subscriptions and subscribe to app_mention, "
                  "message.channels, message.groups and message.im."),
         data=InboundStatus(
-            endpoint_url=url, signing_secret_set=True, ready=True,
+            # NOT ready=True. Saving the secret is one step of four, and the
+            # other three happen in the Slack console where this app cannot see
+            # them. Claiming "ready" here is the same over-claim the events
+            # screen made: it reported success while zero messages had ever
+            # arrived by push, which is precisely the silence being debugged.
+            endpoint_url=url, signing_secret_set=True, ready=False,
             state="secret saved",
             detail=(f"Request URL: {url}\n\n"
                     "Slack will call it once to verify — that challenge is "
-                    "answered automatically.")),
+                    "answered automatically.\n\n"
+                    "This is step 2 of 4. Still to do in Slack: save the "
+                    "Request URL, subscribe to the four bot events, then "
+                    "Reinstall the app.")),
         refresh_panels=["slack", "slack_nav"],
     )

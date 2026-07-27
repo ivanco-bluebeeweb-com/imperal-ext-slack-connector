@@ -67,6 +67,7 @@ async def slack_events(ctx, headers: dict | None = None, body: str = "",
     challenge = inbound.url_verification_response(payload)
     if challenge is not None:
         await ctx.log("Slack URL verification challenge answered", level="info")
+        await inbound.note_delivery(ctx, outcome="challenge")
         return challenge
 
     # 2. SIGNATURE -- an unsigned or wrongly signed request is not a Slack
@@ -94,6 +95,11 @@ async def slack_events(ctx, headers: dict | None = None, body: str = "",
         # caller WHY their signature failed helps them forge a better one.
         await ctx.log(
             f"Slack event rejected: {verdict['code']}", level="warn")
+        # Recorded as a READABLE fact, not just a log line: "Slack knocked and
+        # was refused" and "Slack never knocked" both showed up as pushed: 0,
+        # and the log that distinguished them is not visible to the user.
+        await inbound.note_delivery(ctx, outcome="refused",
+                                    code=str(verdict.get("code") or ""))
         return "unauthorised"
 
     envelope = payload if isinstance(payload, dict) else {}
@@ -168,6 +174,9 @@ async def slack_events(ctx, headers: dict | None = None, body: str = "",
     #     two in future -- verified by sabotage, which is also why the honest
     #     claim here is "defence in depth" and not "this is what saves it".
     await journal.record(ctx, normalised, source=journal.SOURCE_PUSH)
+    # Counted right after the journal write, so "accepted" means the same thing
+    # the user sees in the message log rather than merely "reached this line".
+    await inbound.note_delivery(ctx, outcome="accepted")
 
     for event_name in inbound.classify(normalised):
         try:

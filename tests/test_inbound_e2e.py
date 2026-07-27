@@ -382,3 +382,103 @@ async def test_an_unsigned_delivery_is_not_written_to_the_journal(
     after = await journal.counts(inbound_ctx)
     assert after["total"] == before["total"], \
         "an unsigned delivery was recorded in the message log"
+
+
+@pytest.mark.asyncio
+async def test_a_refused_delivery_is_recorded_as_an_attempt(
+        inbound_ctx, http, endpoint):
+    """"Slack never knocked" and "Slack was refused" must not look identical.
+
+    Both produce zero recorded messages, so the message counts alone cannot tell
+    them apart -- and the fixes are opposites: one means finishing the setup in
+    the Slack console, the other means the stored secret is wrong. The evidence
+    that separated them used to go only to ctx.log, which the user cannot read.
+
+    This is not hypothetical. It is exactly the wall the live investigation hit:
+    push showed 0 delivered while every visible setting was correct, and there
+    was no way to tell which of the two situations it was.
+    """
+    import inbound as ib
+
+    before = await ib.delivery_report(inbound_ctx)
+    assert before["attempts"] == 0
+
+    body = json.dumps(envelope(message_event()))
+    headers = sign(body, secret="not-the-real-secret")
+
+    result = await endpoint(inbound_ctx, headers=headers, body=body)
+    assert result != "ok"
+
+    after = await ib.delivery_report(inbound_ctx)
+    assert after["attempts"] == 1, "the knock itself was not recorded"
+    assert after["refused"] == 1
+    assert after["last_refusal_code"], "the refusal code was not kept"
+
+
+@pytest.mark.asyncio
+async def test_an_accepted_delivery_is_recorded_as_accepted(
+        inbound_ctx, http, endpoint):
+    """The other side of the same fact, so 'accepted' is not assumed."""
+    import inbound as ib
+
+    body = json.dumps(envelope(message_event()))
+    result = await endpoint(inbound_ctx, headers=sign(body), body=body)
+    assert result == "ok"
+
+    report = await ib.delivery_report(inbound_ctx)
+    assert report["attempts"] == 1
+    assert report["accepted"] == 1
+    assert report["refused"] == 0
+
+
+@pytest.mark.asyncio
+async def test_the_delivery_probe_never_stores_a_secret_or_message_text(
+        inbound_ctx, http, endpoint):
+    """A diagnostic must not become a data leak.
+
+    It records counters and a refusal CODE. If it ever held the signature, the
+    body, or the message text, then anyone who can read the app's store would
+    get the contents of private Slack conversations from a debug aid.
+    """
+    import inbound as ib
+
+    secret_text = "wire the money to account 12345"
+    body = json.dumps(envelope(message_event(text=secret_text)))
+    await endpoint(inbound_ctx, headers=sign(body), body=body)
+
+    report = await ib.delivery_report(inbound_ctx)
+    blob = str(report)
+    assert secret_text not in blob, "message text leaked into the delivery probe"
+    assert "v0=" not in blob, "a signature leaked into the delivery probe"
+
+
+@pytest.mark.asyncio
+async def test_delivery_attempts_accumulate_across_calls(
+        inbound_ctx, http, endpoint):
+    """Two knocks must count as two, not overwrite each other.
+
+    Sabotage exposed this gap. The single-delivery tests above passed even with
+    the original bug re-introduced, because reading the PRIOR counters only
+    happens on the second delivery -- so a counter that resets to 1 every time
+    looked perfectly correct with one call.
+
+    That bug was real and it was mine: stored fields live under Document.data,
+    and reading them straight off the Document silently returns the default. The
+    counter would have sat at 1 forever no matter how often Slack called, which
+    is worthless for the exact question it exists to answer -- "is Slack
+    knocking repeatedly and being turned away every time?"
+    """
+    import inbound as ib
+
+    body_one = json.dumps(envelope(message_event(ts="111.1")))
+    await endpoint(inbound_ctx, headers=sign(body_one, secret="wrong"),
+                   body=body_one)
+
+    body_two = json.dumps(envelope(message_event(ts="222.2")))
+    await endpoint(inbound_ctx, headers=sign(body_two, secret="wrong"),
+                   body=body_two)
+
+    report = await ib.delivery_report(inbound_ctx)
+    assert report["attempts"] == 2, \
+        f"two deliveries counted as {report['attempts']}"
+    assert report["refused"] == 2
