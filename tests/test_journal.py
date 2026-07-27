@@ -463,3 +463,136 @@ async def test_status_does_not_claim_a_sweep_interval_it_does_not_use():
     from app import ext
 
     assert ext.schedules["slack_catch_up"].cron == journal.SWEEP_CRON
+
+
+# --- joining channels --------------------------------------------------------
+
+async def test_joining_public_channels_the_app_is_not_in(connected_ctx, http):
+    """One call instead of one /invite per channel, forever.
+
+    This is the point of the tool: a bot token can self-join PUBLIC channels, so
+    the manual invite was never required for the common case.
+    """
+    http.push(auth_test_payload())
+    http.push(ok(channels=[
+        channel_payload(channel_id="C1", name="general", is_member=True),
+        channel_payload(channel_id="C2", name="random", is_member=False),
+        channel_payload(channel_id="C3", name="lol-kek", is_member=False),
+    ]))
+    http.push(ok())   # join C2
+    http.push(ok())   # join C3
+
+    result = await hj.join_channels(connected_ctx, hj.JoinChannelsParams())
+
+    assert result.status == "success", result.error
+    assert result.data.joined_count == 2
+    assert "#random" in result.data.joined and "#lol-kek" in result.data.joined
+    # It must not try to join the channel it is already in.
+    assert sum(1 for u in http.urls() if "conversations.join" in u) == 2
+
+
+async def test_a_refused_join_is_reported_not_swallowed(connected_ctx, http):
+    """A scope refusal must not hide behind a cheerful summary.
+
+    "Nothing happened" has two meanings -- already a member, or Slack said no --
+    and they need opposite reactions. Collapsing them is how a missing
+    channels:join scope goes unnoticed.
+    """
+    http.push(auth_test_payload())
+    http.push(ok(channels=[
+        channel_payload(channel_id="C2", name="random", is_member=False),
+    ]))
+    http.push(err("missing_scope"))
+
+    result = await hj.join_channels(connected_ctx, hj.JoinChannelsParams())
+
+    assert result.status == "success", result.error
+    assert result.data.joined_count == 0
+    assert result.data.failed_count == 1
+    assert "random" in result.data.failed
+    assert "could not join" in result.data.detail.lower()
+
+
+async def test_a_private_channel_is_named_as_needing_a_human(
+        connected_ctx, http):
+    """Slack has no self-join for a private channel -- say so, don't fail vaguely."""
+    http.push(auth_test_payload())
+    http.push(ok(channels=[
+        channel_payload(channel_id="C1", name="general", is_member=True),
+    ]))
+
+    result = await hj.join_channels(
+        connected_ctx, hj.JoinChannelsParams(channels="#secret-plans"))
+
+    assert result.status == "success", result.error
+    assert "secret-plans" in result.data.needs_a_human
+    assert "invite" in result.data.detail.lower()
+
+
+async def test_dry_run_joins_nothing(connected_ctx, http):
+    """A write tool needs a way to be asked what it WOULD do."""
+    http.push(auth_test_payload())
+    http.push(ok(channels=[
+        channel_payload(channel_id="C2", name="random", is_member=False),
+    ]))
+
+    result = await hj.join_channels(
+        connected_ctx, hj.JoinChannelsParams(dry_run=True))
+
+    assert result.status == "success", result.error
+    assert result.data.joined_count == 0
+    assert not any("conversations.join" in u for u in http.urls()), \
+        "dry run actually joined a channel"
+
+
+def test_the_schedule_never_joins_channels_on_its_own():
+    """Joining is visible in Slack -- it must stay a deliberate act.
+
+    The hourly sweep reads; it must never quietly add the app to channels,
+    because a background task changing channel membership is not something a
+    user can anticipate or consent to.
+    """
+    import inspect
+    src = inspect.getsource(hj.scheduled_catch_up)
+    assert "join_channels" not in src
+
+
+async def test_naming_a_channel_it_is_already_in_does_not_rejoin(
+        connected_ctx, http):
+    """Re-joining is not harmless: Slack posts a visible "added" line.
+
+    Named channels take a different path from the join-everything case, where
+    the list is already filtered -- so this path needs its own guard. Sabotage
+    proved it: breaking the membership filter kept every other test green.
+    """
+    http.push(auth_test_payload())
+    http.push(ok(channels=[
+        channel_payload(channel_id="C1", name="general", is_member=True),
+        channel_payload(channel_id="C2", name="random", is_member=False),
+    ]))
+    http.push(ok())   # the single legitimate join of #random
+
+    result = await hj.join_channels(connected_ctx, hj.JoinChannelsParams(
+        channels="#general, #random"))
+
+    assert result.status == "success", result.error
+    assert result.data.joined_count == 1
+    assert result.data.already_count == 1
+    # Exactly ONE join call -- #general must not be touched again.
+    assert sum(1 for u in http.urls() if "conversations.join" in u) == 1
+
+
+async def test_a_dry_run_changes_nothing(connected_ctx, http):
+    """A write tool needs a way to be asked "what would you do?" first."""
+    http.push(auth_test_payload())
+    http.push(ok(channels=[
+        channel_payload(channel_id="C2", name="random", is_member=False),
+    ]))
+
+    result = await hj.join_channels(connected_ctx, hj.JoinChannelsParams(
+        dry_run=True))
+
+    assert result.status == "success", result.error
+    assert result.data.joined_count == 0
+    assert not any("conversations.join" in u for u in http.urls()), \
+        "a dry run contacted Slack to join"

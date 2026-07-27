@@ -546,3 +546,40 @@ class SweepReport(_Named):
 
     _id_field: ClassVar[str] = "state"
     _title_field: ClassVar[str] = "state"
+
+
+class JoinChannelsParams(WorkspaceScoped):
+    """Have the app add ITSELF to public channels.
+
+    Exists because the alternative was a permanent chore: a human typing
+    /invite @app in every channel, including every channel created from now on.
+    A bot token with channels:join can join any PUBLIC channel unaided, so the
+    manual step was never actually required for the common case.
+
+    Private channels and DMs are untouched by this: Slack genuinely has no
+    self-join for a private channel (someone inside must invite), and a DM needs
+    no joining at all.
+    """
+    channels: str = Field(
+        "", description="Channel names or ids, comma-separated, e.g. "
+                        "'#random, #lol-kek'. EMPTY joins every public channel "
+                        "the app can see but is not yet in.")
+    dry_run: bool = Field(
+        False,
+        description="List what would be joined without joining anything")
+
+
+class JoinReport(_Named):
+    """What the app joined, what it skipped, and what it could not do."""
+    joined: str = ""
+    joined_count: int = 0
+    already_in: str = ""
+    already_count: int = 0
+    failed: str = ""
+    failed_count: int = 0
+    needs_a_human: str = ""
+    detail: str = ""
+    state: str = ""
+
+    _id_field: ClassVar[str] = "state"
+    _title_field: ClassVar[str] = "state"

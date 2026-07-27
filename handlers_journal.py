@@ -33,6 +33,8 @@ import slack_client as sc
 import slack_objects as so
 from app import chat, ext
 from models import (
+    JoinChannelsParams,
+    JoinReport,
     CatchUpParams,
     InboundLog,
     InboundMessage,
@@ -385,3 +387,126 @@ async def scheduled_catch_up(ctx):
     if new:
         await ctx.log(f"Slack catch-up recorded {new} new message(s)",
                       level="info")
+
+
+# --- joining channels, so awareness does not need a human in every one -------
+
+@chat.function(
+    "join_channels",
+    "Have the Slack app add itself to public channels, so it can see messages "
+    "there. Names the channels, or joins every public channel it is not yet in. "
+    "Private channels still need an invite from someone inside.",
+    action_type="write", chain_callable=True,
+    effects=["slack.channel.joined"],
+    event="slack-connector.join_channels",
+    data_model=JoinReport,
+)
+async def join_channels(ctx, params: JoinChannelsParams) -> ActionResult:
+    """Join public channels with conversations.join.
+
+    WHY THIS IS A WRITE AND STILL SAFE. It changes the workspace -- the app
+    appears as a member, and Slack posts a visible "added to the channel" line.
+    That is real, so it is action_type="write" and never runs by itself: no
+    schedule calls it. But it cannot read anything the user has not already
+    made public, and it cannot touch private channels at all.
+
+    It reports THREE outcomes separately -- joined, already in, and could not --
+    because "nothing happened" has two very different meanings. Already-in is
+    success; a scope refusal is not, and collapsing them into one number is how a
+    missing scope hides behind a cheerful summary.
+    """
+    token, workspace, err = await _resolve(ctx, params.workspace)
+    if err:
+        return err
+
+    listing = await sc.paginate(
+        ctx, "GET", "conversations.list", token,
+        params={"types": "public_channel", "exclude_archived": True},
+        results_key="channels", limit=1000)
+    if not listing.get("ok"):
+        return _from_envelope(listing)
+
+    visible = [c for c in (listing.get("results") or []) if isinstance(c, dict)]
+    by_name = {str(c.get("name") or "").lower(): c for c in visible}
+    by_id = {str(c.get("id") or ""): c for c in visible}
+
+    wanted: list[dict] = []
+    unknown: list[str] = []
+    if params.channels.strip():
+        for ref in params.channels.split(","):
+            ref = ref.strip()
+            if not ref:
+                continue
+            key = so.normalize_channel_ref(ref)
+            found = by_id.get(key) or by_name.get(key.lower().lstrip("#"))
+            if found is None:
+                unknown.append(ref)
+            else:
+                wanted.append(found)
+    else:
+        # Every public channel not already joined. This is the case that makes
+        # the tool worth having: one call instead of one /invite per channel.
+        wanted = [c for c in visible if not c.get("is_member")]
+
+    already = [c for c in wanted if c.get("is_member")]
+    todo = [c for c in wanted if not c.get("is_member")]
+
+    if params.dry_run:
+        names = ", ".join("#" + str(c.get("name") or c.get("id")) for c in todo)
+        return ActionResult.success(
+            summary=(f"Would join {len(todo)} channel(s): {names}."
+                     if todo else "Nothing to join — already in every public "
+                                  "channel it can see."),
+            data=JoinReport(
+                joined="", joined_count=0,
+                already_in=", ".join("#" + str(c.get("name") or "")
+                                     for c in already),
+                already_count=len(already),
+                needs_a_human=", ".join(unknown),
+                state="dry run",
+                detail=f"Would join: {names}" if names else "Nothing to join"))
+
+    joined: list[str] = []
+    failed: list[str] = []
+    for conv in todo:
+        label = "#" + str(conv.get("name") or conv.get("id"))
+        out = await sc.request(ctx, "POST", "conversations.join", token,
+                               json={"channel": conv.get("id")})
+        if out.get("ok"):
+            joined.append(label)
+        else:
+            # The Slack error is kept per channel: one channel refusing (say,
+            # an admin-restricted channel) must not hide the ones that worked.
+            failed.append(f"{label} ({out.get('code') or 'refused'})")
+
+    parts: list[str] = []
+    if joined:
+        parts.append(f"Joined {len(joined)}: {', '.join(joined)}.")
+    if already:
+        parts.append(f"Already in {len(already)}.")
+    if failed:
+        parts.append(f"Could not join {len(failed)}: {', '.join(failed)}.")
+    if unknown:
+        parts.append(
+            f"Not found as a public channel: {', '.join(unknown)} — a private "
+            "channel cannot be self-joined; someone inside must "
+            "/invite @imperal.")
+    if not parts:
+        parts.append("Nothing to do — already in every public channel it can "
+                     "see.")
+
+    if joined:
+        parts.append("Run catch_up to read what was said in them.")
+
+    return ActionResult.success(
+        summary=" ".join(parts),
+        data=JoinReport(
+            joined=", ".join(joined), joined_count=len(joined),
+            already_in=", ".join("#" + str(c.get("name") or "")
+                                 for c in already),
+            already_count=len(already),
+            failed=", ".join(failed), failed_count=len(failed),
+            needs_a_human=", ".join(unknown),
+            state=(f"joined {len(joined)}" if joined
+                   else "nothing to join" if not failed else "refused"),
+            detail=" ".join(parts)))
