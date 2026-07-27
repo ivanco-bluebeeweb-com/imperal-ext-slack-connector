@@ -13,9 +13,10 @@ if _EXT_DIR not in sys.path:
 # Purge stale cached modules so a fresh load always registers decorators
 # (the validator may run multiple extensions in the same process).
 _LOCAL = ("app", "models", "slack_client", "slack_objects", "accounts",
-          "shared", "inbound", "handlers_directory", "handlers_messages",
-          "handlers_post", "handlers_admin", "handlers_inbound",
-          "handlers_events", "panels")
+          "shared", "inbound", "journal", "handlers_directory",
+          "handlers_messages", "handlers_post", "handlers_admin",
+          "handlers_inbound", "handlers_events", "handlers_journal",
+          "panels")
 for _mod in _LOCAL:
     sys.modules.pop(_mod, None)
 
@@ -30,4 +31,5 @@ import handlers_post  # noqa: E402,F401
 import handlers_admin  # noqa: E402,F401
 import handlers_inbound  # noqa: E402,F401
 import handlers_events  # noqa: E402,F401
+import handlers_journal  # noqa: E402,F401
 import panels  # noqa: E402,F401

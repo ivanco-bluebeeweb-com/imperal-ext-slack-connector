@@ -136,6 +136,46 @@ class CheckAccessParams(WorkspaceScoped):
     pass
 
 
+class CatchUpParams(WorkspaceScoped):
+    """Poll every reachable conversation and journal what is new.
+
+    This is the path that makes awareness work WITHOUT the inbound endpoint:
+    no signing secret, no automation slot, no platform fix. Slack is polled for
+    the conversations the app can read, and anything not already journalled is
+    recorded.
+    """
+    limit_per_channel: int = Field(
+        25, ge=1, le=200,
+        description="How many recent messages to examine per conversation")
+    max_channels: int = Field(
+        40, ge=1, le=60,
+        description="How many conversations to sweep, at most")
+    include_channels: bool = Field(
+        True, description="Sweep channels the app has been added to")
+    include_dms: bool = Field(
+        True, description="Sweep direct messages with the app")
+    full: bool = Field(
+        False,
+        description="Ignore the saved position and re-examine recent history. "
+                    "Use after a gap; the journal still refuses duplicates.")
+
+
+class ListInboundParams(BaseModel):
+    """Read what the journal remembers. Not WorkspaceScoped: the journal is
+    keyed by conversation, and a caller asking 'what came in' rarely knows or
+    cares which workspace a message belongs to."""
+    limit: int = Field(
+        30, ge=1, le=200, description="How many messages to return, newest first")
+    channel: str = Field(
+        "", description="Only this conversation, by name or id. Empty = all.")
+    dms_only: bool = Field(
+        False, description="Only direct messages")
+    mentions_only: bool = Field(
+        False, description="Only messages that @-mention the app")
+    unanswered_only: bool = Field(
+        False, description="Only messages with no reply from the app yet")
+
+
 class SendMessageParams(WorkspaceScoped):
     channel: str = Field(
         ..., description="Channel name or id to post to, e.g. '#general'. A "
@@ -397,6 +437,8 @@ class AccessReport(_Named):
     token_kind: str = ""
     channels_visible: int = 0
     channels_joined: int = 0
+    conversations_readable: int = 0
+    dms_readable: int = 0
     can_search: bool = False
     granted_scopes: str = ""
     missing_for_common_tasks: str = ""
@@ -428,3 +470,67 @@ class ChannelAck(_Named):
 
     _id_field: ClassVar[str] = "channel_id"
     _title_field: ClassVar[str] = "name"
+
+
+class InboundMessage(_Named):
+    """One journalled inbound message -- what was said, where, and by whom.
+
+    Carries `reply_thread_ts` because the whole point of remembering a message
+    is being able to answer it in the right place later, and re-deriving
+    Slack's thread rules at reply time is how replies end up in the wrong
+    thread.
+    """
+    text: str = ""
+    author: str = ""
+    author_id: str = ""
+    channel: str = ""
+    channel_id: str = ""
+    is_dm: bool = False
+    ts: str = ""
+    posted_at: str = ""
+    thread_ts: str = ""
+    reply_thread_ts: str = ""
+    is_thread_reply: bool = False
+    mention_of_bot: bool = False
+    has_files: bool = False
+    source: str = ""
+    would_raise: str = ""
+    permalink: str = ""
+
+    _id_field: ClassVar[str] = "ts"
+    _title_field: ClassVar[str] = "author"
+
+
+class InboundLog(_Named):
+    """A page of journalled messages, plus what the journal holds overall."""
+    messages: list[InboundMessage] = []
+    count: int = 0
+    total_remembered: int = 0
+    dms: int = 0
+    mentions: int = 0
+    from_push: int = 0
+    from_sweep: int = 0
+    conversations: int = 0
+    note: str = ""
+    detail: str = ""
+
+    _id_field: ClassVar[str] = "note"
+    _title_field: ClassVar[str] = "note"
+
+
+class SweepReport(_Named):
+    """What one catch-up sweep looked at and what it newly learned."""
+    conversations_seen: int = 0
+    conversations_swept: int = 0
+    conversations_skipped: int = 0
+    messages_examined: int = 0
+    messages_new: int = 0
+    messages_duplicate: int = 0
+    messages_ignored: int = 0
+    skipped_detail: str = ""
+    swept_detail: str = ""
+    detail: str = ""
+    state: str = ""
+
+    _id_field: ClassVar[str] = "state"
+    _title_field: ClassVar[str] = "state"

@@ -16,11 +16,19 @@ import slack_client as sc
 # The one sentence that explains Slack's access model. Reused verbatim wherever
 # emptiness might otherwise read as a bug -- an empty result here usually means
 # "the app was never invited", not "nothing exists".
+# The DM sentence was WRONG and is corrected here. It used to say DMs are
+# "invisible until the app is invited", which sent people looking for an invite
+# that does not exist: Slack has no /invite for a DM. Verified live against the
+# workspace -- the DM with the account owner is reported by conversations.list
+# with `is_member: false`, and both reading its history and posting into it
+# succeed. Only CHANNELS need the app added.
 MEMBERSHIP_NOTE = (
     "A Slack app only reaches conversations it belongs to. Public channels can "
     "be listed without joining, but reading history or posting needs the app in "
     "the channel -- open it in Slack and type /invite @your-app. Private "
-    "channels and DMs are invisible until the app is invited."
+    "channels need the same invite. Direct messages with the app need NO "
+    "invite: anyone in the workspace can DM it and it can read and reply "
+    "there."
 )
 
 

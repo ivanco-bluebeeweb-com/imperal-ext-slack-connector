@@ -10,6 +10,7 @@ from __future__ import annotations
 from imperal_sdk import ActionResult
 
 import accounts as acc
+import journal
 import shared
 import slack_client as sc
 import slack_objects as so
@@ -224,6 +225,17 @@ async def check_access(ctx, params: CheckAccessParams) -> ActionResult:
     visible = out.get("results") or [] if out.get("ok") else []
     joined = [c for c in visible if isinstance(c, dict) and c.get("is_member")]
 
+    # READABLE is the honest measure, and it is NOT the same as `is_member`.
+    # Slack reports `is_member: false` for direct messages, so counting
+    # membership alone described a workspace where the app could read DMs
+    # perfectly well as "member of 1" -- which is what led to the false
+    # conclusion that DMs were unreachable. Verified live: the DM with the
+    # account owner has is_member false, and reading and posting both work.
+    readable = [c for c in visible
+                if isinstance(c, dict) and journal.is_reachable(c)[0]]
+    dms_readable = [c for c in readable
+                    if c.get("is_im") or c.get("is_mpim")]
+
     kind = sc.token_kind(token)
     scopes = str(info.get("scopes") or "")
     can_search = kind == "user"
@@ -231,8 +243,9 @@ async def check_access(ctx, params: CheckAccessParams) -> ActionResult:
     gaps: list[str] = []
     if not can_search:
         gaps.append("message search (needs a user token)")
-    if not joined:
-        gaps.append("reading history or posting (the app is in no channel yet)")
+    if not readable:
+        gaps.append("reading history or posting (the app is in no channel and "
+                    "has no direct messages yet)")
     if scopes and "channels:history" not in scopes and "groups:history" not in scopes:
         gaps.append("reading history (needs a channels:history scope)")
     if scopes and "chat:write" not in scopes:
@@ -249,6 +262,8 @@ async def check_access(ctx, params: CheckAccessParams) -> ActionResult:
         token_kind=kind,
         channels_visible=len(visible),
         channels_joined=len(joined),
+        conversations_readable=len(readable),
+        dms_readable=len(dms_readable),
         can_search=can_search,
         granted_scopes=scopes,
         missing_for_common_tasks="; ".join(gaps),
@@ -257,5 +272,7 @@ async def check_access(ctx, params: CheckAccessParams) -> ActionResult:
     return ActionResult.success(
         summary=f"Connected to {report.workspace_name or 'Slack'} as "
         f"{report.identity or 'the app'}: {len(visible)} conversation(s) "
-        f"visible, member of {len(joined)}.",
+        f"visible, {len(readable)} readable "
+        f"({len(joined)} channel(s) joined, {len(dms_readable)} direct "
+        f"message(s)).",
         data=report)

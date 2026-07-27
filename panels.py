@@ -43,6 +43,7 @@ from __future__ import annotations
 from imperal_sdk import ui
 
 import accounts as acc
+import journal
 from app import ext
 
 # The platform's own secrets manager, for anyone who prefers to paste there (or
@@ -283,8 +284,8 @@ def _events_view(records: list[dict], secret_set: bool,
 
     children.append(ui.Section(title="What Webbee then sees", children=[
         ui.Text(content=(
-            "Each accepted message raises one of these events, ready to use as "
-            "an automation trigger:"),
+            "Each accepted message is written to the message log — and also "
+            "announced as one of these events:"),
             variant="body"),
         ui.Code(content=("slack-connector.message_received\n"
                          "slack-connector.app_mentioned\n"
@@ -296,9 +297,24 @@ def _events_view(records: list[dict], secret_set: bool,
             "thread to answer in — so a reply lands in the same thread the "
             "person wrote in, not at the bottom of the channel."),
             variant="caption"),
+        # Said plainly, because the alternative is the user building a rule that
+        # can never fire and concluding the connector is broken. Verified against
+        # the live platform: creating a rule on any of the four names fails with
+        # "Event 'slack-connector.app_mentioned' not found" -- only OUTBOUND
+        # events (the assistant sending a message) are in the catalog.
+        ui.Alert(
+            title="Automation triggers are not available yet",
+            message=("The platform's automations catalog does not list these "
+                     "four events yet, so a rule cannot be built on them "
+                     "today. Nothing is lost meanwhile: every accepted message "
+                     "is written to the message log, and Catch up reads Slack "
+                     "directly — neither one needs an automation."),
+            type="warning"),
         ui.Stack(direction="horizontal", gap=2, children=[
             ui.Button(label="Refresh",
                       on_click=ui.Call("__panel__slack", view="events")),
+            ui.Button(label="Message log", variant="secondary",
+                      on_click=ui.Call("__panel__slack", view="inbound")),
             ui.Button(label="Back to workspaces", variant="secondary",
                       on_click=ui.Call("__panel__slack", view="workspaces")),
         ]),
@@ -408,9 +424,10 @@ def _workspaces_view(records: list[dict], load_failed: bool,
             "/invite @your-app."),
             variant="body"),
         ui.Text(content=(
-            "Private channels and DMs stay invisible until the app is invited. "
-            "Message search needs a user token (xoxp-); Slack does not expose "
-            "search to bot tokens at all."),
+            "Private channels need the same invite. Direct messages need none: "
+            "anyone can DM the app and it can read and reply there. Message "
+            "search needs a user token (xoxp-); Slack does not expose search "
+            "to bot tokens at all."),
             variant="body"),
         ui.Stack(direction="horizontal", gap=2, children=[
             ui.Button(label="Refresh",
@@ -449,11 +466,28 @@ async def slack_center(ctx, **kwargs):
         await ctx.log("slack panel failed to load workspaces", "error")
         load_failed = True
 
-    if view not in ("connect", "workspaces", "events"):
+    if view not in ("connect", "workspaces", "events", "inbound"):
         view = "workspaces" if records else "connect"
 
     if view == "connect":
         return _connect_view(records)
+    if view == "inbound":
+        # Read defensively and render either way: this screen exists to answer
+        # "has anything arrived?", and failing to a blank panel would leave that
+        # question unanswered in exactly the situation where it matters most.
+        rows: list[dict] = []
+        stats: dict = {}
+        log_failed = False
+        try:
+            rows = await journal.recent(ctx, limit=50)
+            stats = await journal.counts(ctx)
+        except Exception:
+            await ctx.log("slack panel failed to read the message journal",
+                          "error")
+            log_failed = True
+        return _inbound_view(rows, stats,
+                            secret_set=await _signing_secret_is_set(ctx),
+                            load_failed=log_failed)
     if view == "events":
         # Read as a boolean only. The secret's VALUE must never reach the
         # markup -- the panel says whether it is set, never what it is.
@@ -489,6 +523,16 @@ async def slack_nav(ctx, **kwargs):
     label = (records[0].get("workspace_name") or "Slack") if len(records) == 1 \
         else f"{len(records)} workspaces"
 
+    # The journal count is read here so the sidebar can answer "is she seeing
+    # anything?" at a glance. It is a cheap aggregate, and a failure to read it
+    # must never cost the sidebar its buttons -- the state where nothing loads is
+    # exactly the state where the user most needs a way in.
+    seen = -1
+    try:
+        seen = int((await journal.counts(ctx)).get("total") or 0)
+    except Exception:
+        seen = -1
+
     children: list = [ui.Text(content=label, variant="body")]
     if len(healthy) != len(records):
         children.append(ui.Text(
@@ -503,7 +547,140 @@ async def slack_nav(ctx, **kwargs):
         children.append(ui.Button(
             label="Turn on incoming", variant="secondary",
             on_click=ui.Call("__panel__slack", view="events")))
+    # The message log is always offered, whatever the connection state. It is
+    # the answer to "does she see my messages?", and it is also the one screen
+    # that still does something useful when push is off -- Catch up needs no
+    # signing secret and no automation slot.
+    children.append(ui.Button(
+        label=f"Message log ({seen})" if seen >= 0 else "Message log",
+        variant="secondary",
+        on_click=ui.Call("__panel__slack", view="inbound")))
     children.append(ui.Button(
         label="Open", on_click=ui.Call("__panel__slack", view="workspaces")))
 
     return ui.Stack(direction="vertical", gap=2, children=children)
+
+
+def _inbound_view(rows: list[dict], stats: dict, secret_set: bool,
+                  load_failed: bool = False) -> ui.Component:
+    """The message log: what Webbee has actually seen, and how it got there.
+
+    Its own view because "is Webbee aware of my messages?" is a question about
+    EVIDENCE, and the honest answer is a list of messages with where each one
+    came from. A status badge saying "connected" answers a different, easier
+    question and is exactly what made the connector look healthy while nothing
+    was arriving.
+
+    The `source` of every row is shown deliberately. push means Slack delivered
+    it; sweep means Catch up read it from Slack. Hiding that distinction would
+    make a working sweep indistinguishable from a working webhook, and those
+    need very different fixes when one of them stops.
+
+    SKETCH -- inbound view
+      ui.Stack (v, gap=4)
+        ui.Header(text="Message log", level=2, subtitle=...)
+        ui.Alert(...)                       -- how awareness is arriving
+        ui.Stack (h) [ui.Badge x4]          -- totals
+        ui.Stack (h) [ui.Button x3]         -- catch up / refresh / setup
+        ui.List([ui.ListItem ...]) | ui.Empty
+    """
+    children: list = [
+        ui.Header(text="Message log", level=2,
+                  subtitle="Everything Webbee has seen in Slack — channels she "
+                           "was added to, and direct messages."),
+    ]
+
+    if load_failed:
+        children.append(ui.Alert(
+            message=("The message log could not be read just now. Catch up "
+                     "still works, and nothing already recorded is lost."),
+            type="warning"))
+
+    total = int(stats.get("total") or 0)
+    from_push = int(stats.get("from_push") or 0)
+    from_sweep = int(stats.get("from_sweep") or 0)
+
+    # The banner names the mechanism that is actually feeding the log, because
+    # "0 messages" has two completely different causes -- nobody wrote anything,
+    # or nothing is arriving -- and treating them the same is how a silent
+    # integration passes for a healthy one.
+    if not secret_set and from_sweep and not from_push:
+        children.append(ui.Alert(
+            title="Awareness is running on Catch up, not on push",
+            message=("Slack push delivery is off (no signing secret), so these "
+                     "messages were read by Catch up. That is a real gap only "
+                     "if you need instant awareness — press Catch up any time, "
+                     "or turn on incoming events for push."),
+            type="info"))
+    elif not secret_set and not total:
+        children.append(ui.Alert(
+            title="Nothing recorded yet",
+            message=("Push delivery is off and no sweep has run. Press Catch "
+                     "up to read what is already in Slack — it needs no setup "
+                     "at all."),
+            type="warning"))
+    elif from_push:
+        children.append(ui.Alert(
+            message=(f"Push delivery is working: {from_push} message(s) arrived "
+                     "from Slack directly."),
+            type="success"))
+
+    children.append(ui.Stack(direction="horizontal", gap=2, wrap=True, children=[
+        ui.Badge(label="messages", value=total, color="blue"),
+        ui.Badge(label="direct", value=int(stats.get("dms") or 0), color="purple"),
+        ui.Badge(label="mentions", value=int(stats.get("mentions") or 0),
+                 color="green"),
+        ui.Badge(label="from push", value=from_push,
+                 color="green" if from_push else "gray"),
+        ui.Badge(label="from catch up", value=from_sweep, color="gray"),
+    ]))
+
+    children.append(ui.Stack(direction="horizontal", gap=2, wrap=True, children=[
+        # The primary action, and it works with zero configuration -- which is
+        # the entire reason this screen can be useful today.
+        ui.Button(label="Catch up now", icon="RefreshCw",
+                  on_click=ui.Call("catch_up")),
+        ui.Button(label="Refresh", variant="secondary",
+                  on_click=ui.Call("__panel__slack", view="inbound")),
+        ui.Button(label="Incoming events setup", variant="secondary",
+                  on_click=ui.Call("__panel__slack", view="events")),
+        ui.Button(label="Back to workspaces", variant="secondary",
+                  on_click=ui.Call("__panel__slack", view="workspaces")),
+    ]))
+
+    if not rows:
+        children.append(ui.Empty(
+            message=("No messages recorded yet. Catch up reads the "
+                     "conversations Webbee can reach and fills this in."),
+            icon="MessageSquare",
+            action=ui.Call("catch_up")))
+        return ui.Stack(direction="v", gap=4, children=children)
+
+    items: list = []
+    for row in rows:
+        author = str(row.get("user_display_name") or row.get("user_id") or "someone")
+        where = str(row.get("channel_name") or row.get("channel_id") or "")
+        if row.get("is_dm"):
+            where = f"DM · {where}" if where else "DM"
+        marks: list[str] = []
+        if row.get("mention_of_bot"):
+            marks.append("mentions Webbee")
+        if row.get("is_thread_reply"):
+            marks.append("thread reply")
+        if row.get("has_files"):
+            marks.append("has files")
+        source = str(row.get("source") or "")
+        marks.append("push" if source == "push" else "catch up")
+
+        text = str(row.get("text_readable") or row.get("text") or "")
+        items.append(ui.ListItem(
+            id=str(row.get("message_key") or row.get("ts") or ""),
+            title=text[:160] or "(no text)",
+            subtitle=f"{author} · {where}",
+            meta=f"{row.get('posted_at') or ''} · {' · '.join(marks)}",
+        ))
+
+    children.append(ui.List(items=items, searchable=True,
+                            total_items=total,
+                            extra_info=f"{len(items)} of {total} shown"))
+    return ui.Stack(direction="v", gap=4, children=children)

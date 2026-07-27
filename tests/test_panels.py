@@ -325,3 +325,102 @@ async def test_workspaces_view_survives_an_unreadable_secret_store(
     connected_ctx.secrets = Boom()
     assert _types(await panels.slack_center(connected_ctx, view="workspaces"))
     assert records is not None
+
+
+# --- the message log: the screen that answers "does she see my messages?" ----
+
+def _sample_row(text="the roof quote is ready", channel="general",
+                is_dm=False, source="sweep") -> dict:
+    return {
+        "event_type": "message", "event_id": "Ev1",
+        "workspace_id": "T1", "workspace_name": "Acme",
+        "channel_id": "C1", "channel_name": channel,
+        "channel_type": "channel", "is_dm": is_dm,
+        "user_id": "U1", "user_display_name": "Vlad",
+        "text": text, "text_readable": text,
+        "message_ts": "1690000000.000100", "thread_ts": "",
+        "reply_thread_ts": "1690000000.000100",
+        "is_thread_reply": False, "mention_of_bot": False,
+        "has_files": False, "permalink": "", "source": source,
+    }
+
+
+async def test_the_message_log_renders_when_nothing_has_arrived_yet(ctx):
+    """An empty log must EXPLAIN itself, not look like a broken screen.
+
+    Empty is ambiguous here -- it means either "nobody wrote" or "delivery is
+    off", and those need opposite reactions from the user. So the empty state
+    offers the sweep instead of just saying "no data".
+    """
+    tree = await panels.slack_center(ctx, view="inbound")
+    dump = _dump(tree)
+
+    assert _types(tree), "the message log rendered nothing at all"
+    assert "catch_up" in dump, "the empty log does not offer the sweep"
+
+
+async def test_the_message_log_shows_a_message_and_how_it_arrived(ctx):
+    """A row must show the text, the place, and HOW it got here.
+
+    Push working and sweep working look identical in a plain list of messages,
+    yet they fail for different reasons and need different fixes -- so the
+    source stays visible.
+    """
+    import journal
+
+    await journal.record(ctx, _sample_row(), source=journal.SOURCE_SWEEP)
+
+    dump = _dump(await panels.slack_center(ctx, view="inbound"))
+    assert "the roof quote is ready" in dump
+    assert "general" in dump
+    assert "Catch up" in dump or "catch_up" in dump
+
+
+async def test_the_message_log_survives_an_unreadable_journal(ctx):
+    """A failed read must not blank the one screen that answers the question."""
+    class Boom:
+        async def query(self, *a, **k):
+            raise RuntimeError("store down")
+
+        async def create(self, *a, **k):
+            raise RuntimeError("store down")
+
+        async def update(self, *a, **k):
+            raise RuntimeError("store down")
+
+        async def delete(self, *a, **k):
+            raise RuntimeError("store down")
+
+    ctx.store = Boom()
+    tree = await panels.slack_center(ctx, view="inbound")
+    assert _types(tree), "an unreadable journal produced an empty panel"
+
+
+async def test_nav_always_offers_the_message_log(connected_ctx, http):
+    """The sidebar must always lead to the log.
+
+    It is the answer to "does she see my messages?", and it is the one screen
+    that still helps when push is off: the sweep needs no signing secret.
+    """
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+
+    dump = _dump(await panels.slack_nav(connected_ctx))
+    assert "Message log" in dump
+    assert "view': 'inbound'" in dump or '"view": "inbound"' in dump or \
+        "inbound" in dump
+
+
+async def test_the_events_screen_admits_automations_do_not_work_yet(ctx, http):
+    """The screen must not promise a trigger that cannot be created.
+
+    Verified live: building a rule on these event names fails because they are
+    absent from the platform's automations catalog. Promising it anyway sends
+    the user to build something that silently never fires.
+    """
+    from conftest import auth_test_payload
+    http.push(auth_test_payload(team="Acme"))
+
+    dump = _dump(await panels.slack_center(ctx, view="events"))
+    assert "ready to use as an automation trigger" not in dump
+    assert "not available yet" in dump.lower()

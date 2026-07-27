@@ -259,3 +259,75 @@ async def test_a_dm_raises_the_dm_event(inbound_ctx, http, endpoint):
     names = [e["event_type"] for e in emitted(inbound_ctx)]
     assert inbound.EVENT_DM in names
     assert emitted(inbound_ctx)[0]["data"]["is_dm"] is True
+
+
+# --- the journal: awareness that survives a dead emit -------------------------
+# These exist because a SABOTAGE run proved the suite could not see the journal
+# write being deleted from the endpoint: every test stayed green while a signed,
+# verified Slack message left no trace at all. That is the exact failure this
+# whole feature is meant to prevent, so it now has tests that fail loudly.
+
+async def test_a_delivered_message_is_journalled(inbound_ctx, http, endpoint):
+    """A push delivery must be REMEMBERED, not only emitted.
+
+    `emit` is fire-and-forget into the platform's automations catalog. With no
+    subscriber the message is gone -- and the four inbound Slack events are
+    currently not even in that catalog. Storing is what makes awareness real.
+    """
+    import journal
+
+    queue_delivery(http)
+    body = json.dumps(envelope(message_event(text="hello there")))
+    await endpoint(inbound_ctx, headers=sign(body), body=body)
+
+    rows = await journal.recent(inbound_ctx, limit=5)
+    assert len(rows) == 1, "a verified Slack delivery left no journal row"
+    assert rows[0]["text"] == "hello there"
+    assert rows[0]["source"] == journal.SOURCE_PUSH
+
+
+async def test_the_message_is_journalled_even_when_the_emit_fails(
+        inbound_ctx, http, endpoint):
+    """A broken emit must not cost the record.
+
+    Two mechanisms hold this up: the emit loop guards its own exceptions, and
+    the journal write is ordered ahead of it. Sabotage showed the guard alone is
+    currently sufficient -- moving the write after the emit kept this green --
+    so the ordering is defence in depth against future code landing between the
+    two, and this test pins the PROPERTY (a failing emit costs nothing) rather
+    than the ordering that happens to implement it.
+    """
+    import journal
+
+    async def exploding_emit(*_a, **_kw):
+        raise RuntimeError("no subscriber for this event")
+
+    inbound_ctx.extensions.emit = exploding_emit
+
+    queue_delivery(http)
+    body = json.dumps(envelope(message_event(text="survives the emit")))
+    result = await endpoint(inbound_ctx, headers=sign(body), body=body)
+
+    assert result is not None, "the endpoint must still answer Slack"
+    rows = await journal.recent(inbound_ctx, limit=5)
+    assert len(rows) == 1, "the message was lost when the emit failed"
+    assert rows[0]["text"] == "survives the emit"
+
+
+async def test_an_ignored_message_is_not_journalled(inbound_ctx, http, endpoint):
+    """Noise stays out of the journal.
+
+    The app's own messages must never be recorded: a journal that remembers
+    Webbee's own posts is a journal that will eventually have her answer
+    herself.
+    """
+    import journal
+
+    http.push(auth_test_payload())
+    own = message_event(text="my own words")
+    own["user"] = "U0BOTBOT"
+    own["bot_id"] = "B0BOTBOT"
+    body = json.dumps(envelope(own))
+    await endpoint(inbound_ctx, headers=sign(body), body=body)
+
+    assert await journal.recent(inbound_ctx, limit=5) == []

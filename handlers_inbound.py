@@ -23,6 +23,7 @@ from imperal_sdk import ActionResult
 
 import accounts as acc
 import inbound
+import journal
 import shared
 import slack_client as sc
 import slack_objects as so
@@ -137,6 +138,22 @@ async def slack_events(ctx, headers: dict | None = None, body: str = "",
                                     kind=normalised.get("event_type", ""))
 
     await inbound.remember_reply_target(ctx, normalised)
+
+    # 7b. JOURNAL -- the message is STORED, not merely announced.
+    #     `emit` is fire-and-forget into the platform's automations catalog: if
+    #     nothing is subscribed the message is simply gone, and right now the
+    #     four inbound event names are not even IN that catalog (creating a rule
+    #     on them fails with "Event ... not found"). So an emit-only design
+    #     means a verified, signed, de-duplicated Slack message leaves no trace
+    #     whatsoever. Storing is what makes awareness independent of whether
+    #     anything downstream is listening.
+    #
+    #     It runs BEFORE the emit as defence in depth, not as the sole
+    #     safeguard: the emit loop below already swallows its own exceptions, so
+    #     ordering is what protects the record from anything added BETWEEN the
+    #     two in future -- verified by sabotage, which is also why the honest
+    #     claim here is "defence in depth" and not "this is what saves it".
+    await journal.record(ctx, normalised, source=journal.SOURCE_PUSH)
 
     for event_name in inbound.classify(normalised):
         try:
