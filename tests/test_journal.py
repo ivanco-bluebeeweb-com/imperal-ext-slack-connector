@@ -634,3 +634,20 @@ async def test_a_skipped_channel_points_at_the_join_tool(connected_ctx, http):
 
     assert result.status == "success", result.error
     assert "join_channels" in result.data.detail
+
+
+def test_the_membership_note_offers_the_self_join_before_the_chore():
+    """Guidance must lead with what the app can do unaided.
+
+    The note used to prescribe a manual /invite for public channels, which is
+    a chore the app can now do itself -- and repeating it forever, for every new
+    channel, was exactly the cost join_channels removes.
+    """
+    import shared
+
+    note = shared.MEMBERSHIP_NOTE
+    assert "join_channels" in note
+    # Private channels genuinely need a human; that must survive.
+    assert "/invite" in note and "rivate" in note
+    # And the DM correction must not regress.
+    assert "NO invite" in note

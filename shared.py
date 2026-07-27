@@ -25,10 +25,11 @@ import slack_client as sc
 MEMBERSHIP_NOTE = (
     "A Slack app only reaches conversations it belongs to. Public channels can "
     "be listed without joining, but reading history or posting needs the app in "
-    "the channel -- open it in Slack and type /invite @your-app. Private "
-    "channels need the same invite. Direct messages with the app need NO "
-    "invite: anyone in the workspace can DM it and it can read and reply "
-    "there."
+    "the channel -- the app can add itself to public channels with "
+    "join_channels, no human needed. Private channels do need an invite from "
+    "someone inside (/invite @your-app): Slack has no self-join for those. "
+    "Direct messages with the app need NO invite: anyone in the workspace can "
+    "DM it and it can read and reply there."
 )
 
 
