@@ -4931,5 +4931,56 @@
       "refresh": "manual",
       "center_overlay": false
     }
-  ]
+  ],
+  "pricing": {
+    "model": "per_action",
+    "currency": "tokens",
+    "monthly_price": 0,
+    "tool_prices": {
+      "check_access": 0,
+      "inbound_status": 0,
+      "list_inbound": 0,
+      "list_workspaces": 0,
+      "autoreply_status": 0,
+      "sweep_timer_status": 0,
+      "mode_status": 0,
+      "set_autoreply": 0,
+      "set_sweep_timer": 0,
+      "set_mode": 0,
+      "connect_workspace": 0,
+      "connect_events": 0,
+      "catch_up": 1,
+      "list_channels": 1,
+      "list_users": 1,
+      "read_channel": 1,
+      "read_thread": 1,
+      "fetch_message": 1,
+      "fetch_thread_context": 1,
+      "react_to_message": 1,
+      "pin_message": 1,
+      "edit_message": 1,
+      "delete_message": 1,
+      "set_channel_topic": 1,
+      "invite_to_channel": 1,
+      "send_message": 2,
+      "search_messages": 2,
+      "create_channel": 2,
+      "join_channels": 2
+    },
+    "free_tools": [
+      "autoreply_status",
+      "check_access",
+      "connect_events",
+      "connect_workspace",
+      "inbound_status",
+      "list_inbound",
+      "list_workspaces",
+      "mode_status",
+      "set_autoreply",
+      "set_mode",
+      "set_sweep_timer",
+      "sweep_timer_status"
+    ],
+    "notes": "Цена = стоимость работы, не важность функции. 0 — функция не обращается к Slack (настройки, отчёты, чтение своего журнала): брать деньги за чтение собственной настройки значит брать деньги за интерфейс. 1 — один вызов Slack API. 2 — несколько вызовов, разрешение имён или запись, которую видят люди в чужом воркспейсе. catch_up=1 СВЕРЕНО с sweeptimer.PRICE_PER_ACTION_TOKENS: от этого числа считаются все прогнозы затрат автомонитора, и расхождение сделало бы их ложью."
+  }
 }
