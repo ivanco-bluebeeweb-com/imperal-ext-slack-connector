@@ -69,6 +69,95 @@ DEFAULT_INTERVAL_MINUTES = 10
 TOLERANCE_SECONDS = 45
 
 
+# --- the two modes -----------------------------------------------------------
+#
+# MODE IS A NAME FOR `paused`, NOT A SECOND FIELD.
+#
+# The tempting implementation is a stored "mode" string beside the paused flag.
+# It is a trap: two fields describing one fact drift, and then the report says
+# ON DEMAND while the schedule is still sweeping every ten minutes -- a lie with
+# no error attached, and the user only finds out from the bill. So the mode is
+# DERIVED from the flag that actually gates the sweep. There is exactly one
+# truth, and the name is a view of it.
+#
+# Naming it at all is the point of the feature: "paused: false" does not tell
+# anyone they have signed up for ~4300 billable passes a month. "Автомонитор"
+# does.
+MODE_ON_DEMAND = "on_demand"
+MODE_MONITOR = "monitor"
+
+MODE_TEXT = {
+    MODE_ON_DEMAND: "по запросу",
+    MODE_MONITOR: "автомонитор",
+}
+
+#: Days used for every monthly projection. A fixed 30 rather than the real
+#: length of the current month: the number exists to be COMPARED between
+#: intervals, and a figure that shifts by 3% depending on whether it is February
+#: makes two projections look different when only the calendar moved.
+PROJECTION_DAYS = 30
+
+#: What one billable action costs, in tokens. MUST match the per-action price
+#: published for this app -- it is duplicated here because the app cannot read
+#: its own Marketplace price at runtime, and a projection with no price attached
+#: does not answer "what will this cost me".
+#:
+#: Every projection states this figure out loud instead of quietly folding it
+#: into a total, so a stale constant is visible as a wrong PRICE rather than
+#: hiding inside a wrong SUM.
+PRICE_PER_ACTION_TOKENS = 1
+
+
+def mode_of(paused: bool) -> str:
+    """The mode implied by the paused flag. The ONLY place that mapping lives."""
+    return MODE_ON_DEMAND if paused else MODE_MONITOR
+
+
+def mode_text(mode: str) -> str:
+    """Human name of a mode, falling back to the raw value rather than empty."""
+    return MODE_TEXT.get(mode, mode)
+
+
+def passes_per_month(interval_minutes: int) -> int:
+    """How many automatic passes an interval implies over PROJECTION_DAYS.
+
+    This is the number the whole feature exists to show. Automatic monitoring
+    bills per pass, so the interval -- not the amount of Slack activity -- is
+    what sets the bill: at 5 minutes it is roughly 8600 passes a month, at 6
+    hours it is 120. Same app, same usefulness, seventy-fold difference in cost,
+    and nothing in the UI said so before this existed.
+    """
+    interval = clamp_interval(interval_minutes)
+    return int(PROJECTION_DAYS * 24 * 60 // interval)
+
+
+def projection(interval_minutes: int) -> dict:
+    """Passes and token cost per month for one interval."""
+    passes = passes_per_month(interval_minutes)
+    return {
+        "interval_minutes": clamp_interval(interval_minutes),
+        "interval_text": humanize_interval(interval_minutes),
+        "passes": passes,
+        "tokens": passes * PRICE_PER_ACTION_TOKENS,
+    }
+
+
+#: The intervals offered as a comparison table. Deliberately spans the whole
+#: range: a table that stopped at an hour would hide the fact that the cheap end
+#: is seventy times cheaper than the fast end.
+PROJECTION_LADDER = (5, 10, 30, 60, 180, 360, 720, 1440)
+
+
+def cost_ladder() -> list[dict]:
+    """Every offered interval with its monthly cost, cheapest last.
+
+    A ladder rather than a single number because "рост затрат" is a comparison:
+    one figure in isolation reads as a fact of life, while the same figure next
+    to a tenth of it reads as a choice.
+    """
+    return [projection(m) for m in PROJECTION_LADDER]
+
+
 async def _warn(ctx, message: str) -> None:
     """Log a warning without ever raising (a log failure must not skip a run)."""
     try:
@@ -157,6 +246,93 @@ def _next_run_text(last_run, interval_minutes: int, paused: bool) -> str:
     return so.humanize_ts(str(due_at))
 
 
+def compare(before: dict, after: dict) -> dict:
+    """How the monthly cost moved between two states.
+
+    Returns direction ("up" / "down" / "same") and a spoken factor, because the
+    factor is the part that cannot be skimmed past: "~8640 passes" next to
+    "~1440 passes" asks the reader to divide, while "в 6 раз дороже" states the
+    thing the numbers were there to say.
+
+    Handles the on-demand end honestly instead of dividing by zero: going from 0
+    projected passes to thousands has no meaningful multiplier, so it is reported
+    as a direction with no factor rather than an invented "infinity".
+    """
+    old = int(before.get("projected_passes") or 0)
+    new = int(after.get("projected_passes") or 0)
+
+    if old == new:
+        return {"direction": "same", "factor": 1.0, "factor_text": ""}
+
+    direction = "up" if new > old else "down"
+
+    # No multiplier exists against zero. Saying so beats printing something
+    # arithmetically true but meaningless.
+    if not old or not new:
+        return {"direction": direction, "factor": 0.0, "factor_text": ""}
+
+    factor = (new / old) if direction == "up" else (old / new)
+    return {
+        "direction": direction,
+        "factor": factor,
+        # Whole numbers stay whole ("в 6 раз"), awkward ones get one decimal.
+        # "в 6.0 раз" reads like a machine talking.
+        "factor_text": _factor_text(factor),
+    }
+
+
+def plural(count: int, one: str, few: str, many: str) -> str:
+    """A Russian count with its noun agreeing: 1 проход, 2 прохода, 5 проходов.
+
+    Exists because these strings are read while deciding about money, and a
+    machine fumbling "144 проходов" undercuts the figure it is presenting. The
+    11-14 exception is the one everybody forgets (14 проходов, not 14 прохода).
+    """
+    last_two = abs(count) % 100
+    last = abs(count) % 10
+    if 11 <= last_two <= 14:
+        return f"{count} {many}"
+    if last == 1:
+        return f"{count} {one}"
+    if last in (2, 3, 4):
+        return f"{count} {few}"
+    return f"{count} {many}"
+
+
+def passes_text(count: int) -> str:
+    """"3 прохода" -- the unit this app bills in."""
+    return plural(count, "проход", "прохода", "проходов")
+
+
+def tokens_text(count: int) -> str:
+    """"1 токен" -- the unit the user pays in."""
+    return plural(count, "токен", "токена", "токенов")
+
+
+def _factor_text(factor: float) -> str:
+    """The multiplier in readable Russian, with the noun actually agreeing.
+
+    This text is read while deciding about money, so "в 3 раз" -- a machine
+    fumbling its own grammar -- undermines the number it is trying to convey.
+    Russian needs "раз" for 5+ and "раза" for 2-4, and the rule repeats every
+    ten (22 раза, 25 раз).
+    """
+    if abs(factor - round(factor)) >= 0.05:
+        # Fractions always take "раза": в 1.3 раза.
+        return f"в {factor:.1f} раза"
+
+    whole = int(round(factor))
+    last_two = whole % 100
+    last = whole % 10
+    if 11 <= last_two <= 14:
+        noun = "раз"
+    elif last in (2, 3, 4):
+        noun = "раза"
+    else:
+        noun = "раз"
+    return f"в {whole} {noun}"
+
+
 async def describe(ctx) -> dict:
     """The timer as a person should see it: interval, paused, last run.
 
@@ -198,6 +374,33 @@ async def describe(ctx) -> dict:
         # next run exists) and empty before the first run (it is due now, and
         # inventing a future time for "immediately" would be a lie).
         "next_run": _next_run_text(last_run, interval, paused),
+
+        # THE MODE, derived -- never stored. See MODE_ON_DEMAND above for why a
+        # second field would be a liability rather than a convenience.
+        "mode": mode_of(paused),
+        "mode_text": mode_text(mode_of(paused)),
+
+        # WHAT THE CURRENT SETTING IMPLIES PER MONTH. Carried in the same dict as
+        # the interval so no caller can report one without the other: an interval
+        # shown without its cost is exactly the gap this feature exists to close.
+        "projected_passes": 0 if paused else passes_per_month(interval),
+        "projected_tokens": (0 if paused
+                             else passes_per_month(interval)
+                             * PRICE_PER_ACTION_TOKENS),
+
+        # WHAT HAS ACTUALLY BEEN SPENT, as opposed to projected. Both are needed
+        # and they answer different questions: the projection is what you are
+        # signing up for, this is what already happened. A projection alone can
+        # be dismissed as theory.
+        "billable_passes": int(data.get("billable_passes") or 0),
+        "billable_tokens": (int(data.get("billable_passes") or 0)
+                            * PRICE_PER_ACTION_TOKENS),
+        "counting_since": (so.humanize_ts(str(data.get("counting_since")))
+                           if data.get("counting_since") else ""),
+        # The raw value as well, because a write needs the number and a report
+        # needs the words. Deriving one from the other is impossible in the
+        # direction that matters: humanized text cannot be stored and read back.
+        "counting_since_at": data.get("counting_since") or "",
     }
 
 
@@ -228,6 +431,13 @@ async def set_interval(ctx, *, minutes=None, paused=None,
         # next tick look overdue and fire immediately, so every settings edit
         # would trigger an unscheduled poll.
         "last_run_at": current["last_run_at"] or "",
+
+        # The spend counter SURVIVES every settings change. Resetting it on a
+        # mode switch would let a month of accrued cost vanish by toggling the
+        # mode -- and a spend figure that can be erased by an unrelated action is
+        # not a spend figure anyone can rely on.
+        "billable_passes": current["billable_passes"],
+        "counting_since": current["counting_since_at"],
     }
 
     doc = await _settings_doc(ctx)
@@ -299,12 +509,22 @@ async def mark_ran(ctx, *, now: float | None = None) -> None:
         if doc is not None and getattr(doc, "id", ""):
             data = dict(getattr(doc, "data", None) or {})
             data["last_run_at"] = moment
+
+            # COUNTED HERE, and only here. This function is called exactly once
+            # per pass that actually goes to Slack -- a skipped tick never
+            # reaches it -- so it is the one place where "a billable pass
+            # happened" is unambiguously true. Counting in the schedule handler
+            # instead would count ticks, and ticks are free.
+            data["billable_passes"] = int(data.get("billable_passes") or 0) + 1
+            data.setdefault("counting_since", moment)
             await ctx.store.update(SETTINGS_COLLECTION, doc.id, data)
         else:
             await ctx.store.create(SETTINGS_COLLECTION, {
                 "interval_minutes": DEFAULT_INTERVAL_MINUTES,
                 "paused": False,
                 "last_run_at": moment,
+                "billable_passes": 1,
+                "counting_since": moment,
             })
     except Exception:
         # Deliberately swallowed: the sweep itself already ran. Raising here

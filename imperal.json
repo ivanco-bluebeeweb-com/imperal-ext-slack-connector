@@ -4499,6 +4499,344 @@
       "long_running": false,
       "scopes": [],
       "owner_chat_tool": "slack"
+    },
+    {
+      "name": "set_mode",
+      "description": "Switch between the two modes: 'monitor' (Webbee checks Slack automatically on a timer, billed per pass) and 'on_demand' (she reads Slack only when asked, no automatic charges).",
+      "action_type": "write",
+      "chain_callable": true,
+      "effects": [
+        "slack.mode.changed"
+      ],
+      "id_projection": "",
+      "params_schema": {
+        "description": "Switch between reading on request and monitoring automatically.\n\n`mode` is REQUIRED with no default, for the same reason the auto-reply switch\nis: one of these two states spends money on a schedule, so a vague\ninstruction must not be able to pick it. A default here would let \"настрой\nрежим\" quietly start ~4300 billable passes a month.",
+        "properties": {
+          "mode": {
+            "description": "'monitor' — Webbee checks Slack automatically on a timer (billed per pass). 'on_demand' — she reads Slack only when asked (no automatic charges).",
+            "title": "Mode",
+            "type": "string"
+          },
+          "minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional: interval in minutes for monitor mode, 5 to 1440. Omit to keep the current interval.",
+            "title": "Minutes"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "title": "AppModeParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Which mode the app is in, and what that mode costs.\n\nCarries projection AND actual spend together on purpose. They answer\ndifferent questions -- \"what am I signing up for\" versus \"what has already\nhappened\" -- and either one alone is dismissible: a projection reads as\ntheory, a bare total reads as a fact of life rather than a choice.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "mode": {
+            "default": "",
+            "title": "Mode",
+            "type": "string"
+          },
+          "mode_text": {
+            "default": "",
+            "title": "Mode Text",
+            "type": "string"
+          },
+          "interval_minutes": {
+            "default": 0,
+            "title": "Interval Minutes",
+            "type": "integer"
+          },
+          "interval_text": {
+            "default": "",
+            "title": "Interval Text",
+            "type": "string"
+          },
+          "projected_passes": {
+            "default": 0,
+            "title": "Projected Passes",
+            "type": "integer"
+          },
+          "projected_tokens": {
+            "default": 0,
+            "title": "Projected Tokens",
+            "type": "integer"
+          },
+          "billable_passes": {
+            "default": 0,
+            "title": "Billable Passes",
+            "type": "integer"
+          },
+          "billable_tokens": {
+            "default": 0,
+            "title": "Billable Tokens",
+            "type": "integer"
+          },
+          "counting_since": {
+            "default": "",
+            "title": "Counting Since",
+            "type": "string"
+          },
+          "price_per_action": {
+            "default": 0,
+            "title": "Price Per Action",
+            "type": "integer"
+          },
+          "autoreply_enabled": {
+            "default": false,
+            "title": "Autoreply Enabled",
+            "type": "boolean"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "AppModeStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "slack-connector.set_mode",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
+    },
+    {
+      "name": "mode_status",
+      "description": "Report which mode the app is in, what it has cost so far, and what each monitoring interval would cost per month.",
+      "action_type": "read",
+      "chain_callable": true,
+      "effects": [],
+      "id_projection": "",
+      "params_schema": {
+        "description": "No inputs: it reports the mode and its cost.",
+        "properties": {},
+        "title": "AppModeStatusParams",
+        "type": "object"
+      },
+      "return_schema": {
+        "description": "Which mode the app is in, and what that mode costs.\n\nCarries projection AND actual spend together on purpose. They answer\ndifferent questions -- \"what am I signing up for\" versus \"what has already\nhappened\" -- and either one alone is dismissible: a projection reads as\ntheory, a bare total reads as a fact of life rather than a choice.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "default": "",
+            "title": "Id"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "kind": {
+            "default": "",
+            "title": "Kind",
+            "type": "string"
+          },
+          "subtitle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Subtitle"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Description"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Url"
+          },
+          "mode": {
+            "default": "",
+            "title": "Mode",
+            "type": "string"
+          },
+          "mode_text": {
+            "default": "",
+            "title": "Mode Text",
+            "type": "string"
+          },
+          "interval_minutes": {
+            "default": 0,
+            "title": "Interval Minutes",
+            "type": "integer"
+          },
+          "interval_text": {
+            "default": "",
+            "title": "Interval Text",
+            "type": "string"
+          },
+          "projected_passes": {
+            "default": 0,
+            "title": "Projected Passes",
+            "type": "integer"
+          },
+          "projected_tokens": {
+            "default": 0,
+            "title": "Projected Tokens",
+            "type": "integer"
+          },
+          "billable_passes": {
+            "default": 0,
+            "title": "Billable Passes",
+            "type": "integer"
+          },
+          "billable_tokens": {
+            "default": 0,
+            "title": "Billable Tokens",
+            "type": "integer"
+          },
+          "counting_since": {
+            "default": "",
+            "title": "Counting Since",
+            "type": "string"
+          },
+          "price_per_action": {
+            "default": 0,
+            "title": "Price Per Action",
+            "type": "integer"
+          },
+          "autoreply_enabled": {
+            "default": false,
+            "title": "Autoreply Enabled",
+            "type": "boolean"
+          },
+          "detail": {
+            "default": "",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "title": "AppModeStatus",
+        "type": "object",
+        "x-sdl": "entity"
+      },
+      "event": "",
+      "background": false,
+      "long_running": false,
+      "scopes": [],
+      "owner_chat_tool": "slack"
     }
   ],
   "signals": [],

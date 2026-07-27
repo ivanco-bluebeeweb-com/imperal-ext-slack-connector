@@ -209,6 +209,27 @@ class SweepTimerParams(BaseModel):
                           "unchanged.")
 
 
+class AppModeParams(BaseModel):
+    """Switch between reading on request and monitoring automatically.
+
+    `mode` is REQUIRED with no default, for the same reason the auto-reply switch
+    is: one of these two states spends money on a schedule, so a vague
+    instruction must not be able to pick it. A default here would let "настрой
+    режим" quietly start ~4300 billable passes a month.
+    """
+    mode: str = Field(
+        ..., description="'monitor' — Webbee checks Slack automatically on a "
+                         "timer (billed per pass). 'on_demand' — she reads "
+                         "Slack only when asked (no automatic charges).")
+    minutes: int | None = Field(
+        None, description="Optional: interval in minutes for monitor mode, 5 "
+                          "to 1440. Omit to keep the current interval.")
+
+
+class AppModeStatusParams(BaseModel):
+    """No inputs: it reports the mode and its cost."""
+
+
 class SweepTimerStatusParams(BaseModel):
     """No inputs: it reports the timer, which is not parameterised."""
 
@@ -588,6 +609,28 @@ class AutoReplyStatus(_Named):
 
     _id_field: ClassVar[str] = "kind"
     _title_field: ClassVar[str] = "detail"
+
+
+class AppModeStatus(_Named):
+    """Which mode the app is in, and what that mode costs.
+
+    Carries projection AND actual spend together on purpose. They answer
+    different questions -- "what am I signing up for" versus "what has already
+    happened" -- and either one alone is dismissible: a projection reads as
+    theory, a bare total reads as a fact of life rather than a choice.
+    """
+    mode: str = ""
+    mode_text: str = ""
+    interval_minutes: int = 0
+    interval_text: str = ""
+    projected_passes: int = 0
+    projected_tokens: int = 0
+    billable_passes: int = 0
+    billable_tokens: int = 0
+    counting_since: str = ""
+    price_per_action: int = 0
+    autoreply_enabled: bool = False
+    detail: str = ""
 
 
 class SweepTimerStatus(_Named):

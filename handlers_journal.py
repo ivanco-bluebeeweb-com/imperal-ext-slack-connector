@@ -35,6 +35,9 @@ import slack_client as sc
 import slack_objects as so
 from app import chat, ext
 from models import (
+    AppModeParams,
+    AppModeStatus,
+    AppModeStatusParams,
     AutoReplyParams,
     AutoReplyStatus,
     AutoReplyStatusParams,
@@ -783,3 +786,222 @@ def _timer_entity(state: dict) -> SweepTimerStatus:
         next_run=state["next_run"],
         detail=title,
         title=title)
+
+
+# --- the two modes, and what each one costs ----------------------------------
+#
+# The app has always had these two states -- they were just called `paused` and
+# reported as a boolean nobody could price. Naming them, and attaching the cost
+# of each to the moment of choosing, is the whole point: "paused: false" does not
+# tell anyone they have signed up for thousands of billable passes a month.
+#
+# Cost is stated at every point where it CHANGES (switching to monitor, changing
+# the interval) rather than only in a status anyone has to think to ask for. A
+# cost you have to go looking for is a cost you discover on the bill.
+
+@chat.function(
+    "set_mode",
+    "Switch between the two modes: 'monitor' (Webbee checks Slack "
+    "automatically on a timer, billed per pass) and 'on_demand' (she reads "
+    "Slack only when asked, no automatic charges).",
+    action_type="write", chain_callable=True,
+    effects=["slack.mode.changed"],
+    event="slack-connector.set_mode",
+    data_model=AppModeStatus,
+)
+async def set_mode(ctx, params: AppModeParams) -> ActionResult:
+    """Pick a mode, and say what it will cost before anything runs.
+
+    Refuses an unrecognised mode instead of guessing. One of these two states
+    spends money on a schedule; picking the expensive one from an ambiguous word
+    is not a mistake that can be undone by switching back, because the passes
+    have already been billed.
+    """
+    wanted = (params.mode or "").strip().lower()
+
+    aliases = {
+        "monitor": sweeptimer.MODE_MONITOR,
+        "auto": sweeptimer.MODE_MONITOR,
+        "автомонитор": sweeptimer.MODE_MONITOR,
+        "on_demand": sweeptimer.MODE_ON_DEMAND,
+        "on demand": sweeptimer.MODE_ON_DEMAND,
+        "ondemand": sweeptimer.MODE_ON_DEMAND,
+        "manual": sweeptimer.MODE_ON_DEMAND,
+        "по запросу": sweeptimer.MODE_ON_DEMAND,
+    }
+    mode = aliases.get(wanted, "")
+    if not mode:
+        return ActionResult.error(
+            "Режим бывает двух видов: 'monitor' — Webbee сама проверяет Slack "
+            "по таймеру (платно за проход), или 'on_demand' — читает только "
+            "когда попросишь (без автоматических трат).",
+            code=sc.SLACK_VALIDATION_FAILED)
+
+    # READ BEFORE WRITING. The point of this whole feature is that a change in
+    # spending is VISIBLE, and "visible" means stated as a change -- x6 -- not
+    # left as two numbers for the user to divide in their head. That comparison
+    # is impossible after the write, so the old state is captured first.
+    before = await sweeptimer.describe(ctx)
+
+    # Monitor mode IS "not paused" -- one stored truth, named two ways.
+    outcome = await sweeptimer.set_interval(
+        ctx, minutes=params.minutes,
+        paused=(mode == sweeptimer.MODE_ON_DEMAND))
+
+    if not outcome["saved"]:
+        return ActionResult.error(
+            "Не удалось сохранить режим. Попробуй ещё раз.",
+            code=sc.SLACK_SETTING_WRITE_FAILED)
+
+    state = await sweeptimer.describe(ctx)
+    autoreply_on = await autoreply.is_enabled(ctx)
+
+    if state["mode"] == sweeptimer.MODE_MONITOR:
+        detail = (f"Автомонитор: {state['interval_text']}, "
+                  f"~{state['projected_passes']} проходов в месяц")
+        summary = (
+            f"Режим: автомонитор — Webbee сама проверяет Slack "
+            f"{state['interval_text']}. "
+            f"Это ~{state['projected_passes']} оплачиваемых проходов в месяц "
+            f"(~{state['projected_tokens']} токенов при цене "
+            f"{sweeptimer.PRICE_PER_ACTION_TOKENS} за проход).")
+        if autoreply_on:
+            summary += " Автоответы включены — они идут в этом же ритме."
+        # THE CHANGE, SPOKEN AS A CHANGE. Two numbers side by side make the
+        # reader do the arithmetic; "в 6 раз больше" cannot be skimmed past.
+        # Stated in whichever direction it went -- hiding a DECREASE would be
+        # the same failure of nerve as hiding an increase, and would make this
+        # line read as scaremongering rather than information.
+        movement = sweeptimer.compare(before, state)
+        if movement["direction"] == "up":
+            summary += (f" ⚠️ Это {movement['factor_text']} дороже, чем было "
+                        f"({before['mode_text']}, "
+                        f"~{before['projected_passes']} проходов).")
+        elif movement["direction"] == "down":
+            summary += (f" Это {movement['factor_text']} дешевле, чем было "
+                        f"(~{before['projected_passes']} проходов).")
+
+        # And a cheaper alternative, so the figure reads as a choice rather than
+        # a fact of life.
+        cheaper = sweeptimer.projection(
+            min(sweeptimer.MAX_INTERVAL_MINUTES,
+                state["interval_minutes"] * 6))
+        if cheaper["passes"] < state["projected_passes"]:
+            summary += (f" Для сравнения: {cheaper['interval_text']} — "
+                        f"~{cheaper['passes']} проходов "
+                        f"(~{cheaper['tokens']} токенов).")
+    else:
+        detail = "По запросу: автоматических проходов нет"
+        summary = (
+            "Режим: по запросу — Webbee читает Slack только когда попросишь. "
+            "Автоматических проходов и автоматических трат нет. "
+            f"Интервал сохранён ({state['interval_text']}) на случай "
+            "возврата в автомонитор.")
+        if before["projected_passes"]:
+            summary += (f" Экономия: ~{before['projected_passes']} проходов в "
+                        f"месяц (~{before['projected_tokens']} токенов) больше "
+                        f"не тратятся.")
+        if autoreply_on:
+            summary += (" Автоответы включены, но сработают только при "
+                        "проверке — то есть когда попросишь.")
+
+    if outcome["clamped"]:
+        summary += (f" Интервал поправлен до допустимого диапазона "
+                    f"({sweeptimer.MIN_INTERVAL_MINUTES}–"
+                    f"{sweeptimer.MAX_INTERVAL_MINUTES} мин).")
+
+    return ActionResult.success(
+        summary=summary,
+        data=AppModeStatus(
+            mode=state["mode"], mode_text=state["mode_text"],
+            interval_minutes=state["interval_minutes"],
+            interval_text=state["interval_text"],
+            projected_passes=state["projected_passes"],
+            projected_tokens=state["projected_tokens"],
+            billable_passes=state["billable_passes"],
+            billable_tokens=state["billable_tokens"],
+            counting_since=state["counting_since"],
+            price_per_action=sweeptimer.PRICE_PER_ACTION_TOKENS,
+            autoreply_enabled=autoreply_on,
+            detail=detail))
+
+
+@chat.function(
+    "mode_status",
+    "Report which mode the app is in, what it has cost so far, and what each "
+    "monitoring interval would cost per month.",
+    action_type="read", chain_callable=True,
+    data_model=AppModeStatus,
+)
+async def mode_status(ctx, params: AppModeStatusParams) -> ActionResult:
+    """Mode, actual spend, projected spend, and the comparison ladder.
+
+    Shows spent AND projected because they are dismissible alone: a projection
+    reads as theory until something has actually been billed, and a total reads
+    as a fact of life until you can see the cheaper option beside it.
+    """
+    state = await sweeptimer.describe(ctx)
+    autoreply_on = await autoreply.is_enabled(ctx)
+    price = sweeptimer.PRICE_PER_ACTION_TOKENS
+
+    lines = []
+    if state["mode"] == sweeptimer.MODE_MONITOR:
+        detail = (f"Автомонитор: {state['interval_text']}, "
+                  f"~{state['projected_passes']} проходов в месяц")
+        lines.append(
+            f"Режим: АВТОМОНИТОР — Webbee проверяет Slack "
+            f"{state['interval_text']} сама.")
+        lines.append(
+            f"Прогноз: ~{state['projected_passes']} оплачиваемых проходов в "
+            f"месяц (~{state['projected_tokens']} токенов).")
+    else:
+        detail = "По запросу: автоматических проходов нет"
+        lines.append(
+            "Режим: ПО ЗАПРОСУ — Webbee читает Slack только когда попросишь.")
+        lines.append(
+            "Прогноз: 0 автоматических проходов, 0 токенов в месяц. "
+            f"Интервал сохранён ({state['interval_text']}) на случай возврата "
+            "в автомонитор.")
+
+    # Actual spend before projections: what already happened is the harder fact.
+    if state["billable_passes"]:
+        lines.append(
+            f"Фактически потрачено: "
+            f"{sweeptimer.passes_text(state['billable_passes'])} "
+            f"= {sweeptimer.tokens_text(state['billable_tokens'])}"
+            + (f" (учёт с {state['counting_since']})"
+               if state["counting_since"] else ""))
+    else:
+        lines.append("Фактически потрачено: пока ни одного платного прохода.")
+
+    lines.append(f"Цена: {sweeptimer.tokens_text(price)} за проход. "
+                 "Ручные запросы тарифицируются как обычное действие.")
+    lines.append("")
+    lines.append("Сколько стоит автомонитор при разных интервалах (в месяц):")
+    for row in sweeptimer.cost_ladder():
+        marker = ("  ← сейчас"
+                  if (row["interval_minutes"] == state["interval_minutes"]
+                      and state["mode"] == sweeptimer.MODE_MONITOR)
+                  else "")
+        lines.append(f"  {row['interval_text']}: ~{row['passes']} проходов "
+                     f"= ~{row['tokens']} токенов{marker}")
+
+    if autoreply_on:
+        lines.append("")
+        lines.append("Автоответы включены: они идут внутри тех же проходов и "
+                     "отдельно не тарифицируются.")
+
+    return ActionResult.success(
+        summary="\n".join(lines),
+        data=AppModeStatus(
+            mode=state["mode"], mode_text=state["mode_text"],
+            interval_minutes=state["interval_minutes"],
+            interval_text=state["interval_text"],
+            projected_passes=state["projected_passes"],
+            projected_tokens=state["projected_tokens"],
+            billable_passes=state["billable_passes"],
+            billable_tokens=state["billable_tokens"],
+            counting_since=state["counting_since"],
+            price_per_action=price,
+            autoreply_enabled=autoreply_on,
+            detail=detail))
