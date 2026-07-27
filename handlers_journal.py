@@ -48,7 +48,20 @@ _resolve = shared.resolve
 
 
 def _to_entity(row: dict) -> InboundMessage:
-    """One journal row as the entity the caller sees."""
+    """One journal row as the entity the caller sees.
+
+    `posted_at` is RE-DERIVED from the stored ts rather than read back
+    verbatim. Rows written before the date format was fixed hold the old
+    "2026-07-27 18:28" shape, which the platform's PII guard redacts to
+    "<PHONE>:28" -- so history would stay unreadable in chat forever while new
+    messages rendered fine. Deriving it on read fixes the backlog without a
+    data migration, and costs nothing: ts is already the source of truth.
+
+    The raw `ts` fields are passed through UNTOUCHED. They are the message's
+    identity and go back to Slack when replying; reformatting them would break
+    replies, which is a far worse failure than an ugly date.
+    """
+    message_ts = str(row.get("message_ts") or "")
     return InboundMessage(
         text=str(row.get("text_readable") or row.get("text") or ""),
         author=str(row.get("user_display_name") or row.get("user_id") or ""),
@@ -56,8 +69,9 @@ def _to_entity(row: dict) -> InboundMessage:
         channel=str(row.get("channel_name") or row.get("channel_id") or ""),
         channel_id=str(row.get("channel_id") or ""),
         is_dm=bool(row.get("is_dm")),
-        ts=str(row.get("message_ts") or ""),
-        posted_at=str(row.get("posted_at") or ""),
+        ts=message_ts,
+        posted_at=(so.humanize_ts(message_ts)
+                   or str(row.get("posted_at") or "")),
         thread_ts=str(row.get("thread_ts") or ""),
         reply_thread_ts=str(row.get("reply_thread_ts") or ""),
         is_thread_reply=bool(row.get("is_thread_reply")),

@@ -8,13 +8,42 @@ Two invariants matter most here:
   actively misleading to a model summarising a channel.
 """
 
+import re
+
 import slack_objects as so
 
 
 # --- timestamps: display vs identity ----------------------------------------
 
 def test_ts_is_humanized_for_display():
-    assert so.humanize_ts("1690000000.123456") == "2023-07-22 04:26"
+    assert so.humanize_ts("1690000000.123456") == "22 июл 2023, 04:26"
+
+
+def test_a_rendered_date_is_not_mistaken_for_a_phone_number():
+    """The displayed time must survive the platform's PII redaction.
+
+    FOUND LIVE. The old format rendered "2026-07-27 18:28", and the leading run
+    "2026-07-27 18" is ten digits with separators — the PII guard read it as a
+    phone number and the whole string arrived in chat as "<PHONE>:28". Webbee
+    could report WHAT was posted but not WHEN, which is precisely the question
+    "what's the latest message?" asks.
+
+    The invariant is not the exact wording: it is that the string never
+    contains a long unbroken digit run, so letters must separate the parts.
+    """
+    rendered = so.humanize_ts("1785176897.496389")
+
+    assert rendered == "27 июл 2026, 18:28"
+
+    # No run of digits long enough to read as a phone number.
+    longest = max((len(run) for run in re.findall(r"[\d\s.\-]+", rendered)),
+                  default=0)
+    assert longest < 10, (
+        f"'{rendered}' contains a {longest}-char digit run — long enough to be "
+        f"redacted as a phone number")
+    assert any(ch.isalpha() for ch in rendered), (
+        f"'{rendered}' is all digits and separators; it needs letters to be "
+        f"distinguishable from a phone number")
 
 
 def test_an_unparseable_ts_yields_empty_not_an_exception():

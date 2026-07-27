@@ -30,12 +30,27 @@ import re
 _ENTITY_RE = re.compile(r"<([^<>]+)>")
 
 
+#: Month names, so a rendered date carries letters and not only digits.
+_MONTHS = ("янв", "фев", "мар", "апр", "мая", "июн",
+           "июл", "авг", "сен", "окт", "ноя", "дек")
+
+
 def humanize_ts(ts: str) -> str:
-    """Turn a Slack ts into 'YYYY-MM-DD HH:MM' UTC, or '' if unparseable.
+    """Turn a Slack ts into '27 июл 2026, 18:28' UTC, or '' if unparseable.
 
     Purely for DISPLAY -- the original string is what gets sent back to Slack.
     A malformed ts yields an empty string rather than an exception: a message
     with an odd timestamp should still be readable.
+
+    THE FORMAT IS NOT COSMETIC. The previous '%Y-%m-%d %H:%M' rendered as
+    "2026-07-27 18:28", and the platform's PII guard read the leading run
+    "2026-07-27 18" as a ten-digit phone number and replaced the whole thing
+    with "<PHONE>". Found live: the message text arrived in chat correctly
+    while its time arrived as "<PHONE>:28" -- Webbee could say WHAT was posted
+    but not WHEN, which is useless for "what's the latest message?".
+
+    Spelling the month out breaks the digit run with letters, so the string can
+    no longer look like a phone number to any reasonable matcher.
     """
     raw = (ts or "").strip()
     if not raw:
@@ -48,7 +63,8 @@ def humanize_ts(ts: str) -> str:
         moment = _dt.datetime.fromtimestamp(seconds, tz=_dt.timezone.utc)
     except (OverflowError, OSError, ValueError):
         return ""
-    return moment.strftime("%Y-%m-%d %H:%M")
+    return (f"{moment.day} {_MONTHS[moment.month - 1]} {moment.year}, "
+            f"{moment:%H:%M}")
 
 
 def _unescape(text: str) -> str:

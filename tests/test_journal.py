@@ -741,3 +741,63 @@ async def test_check_access_warns_when_it_cannot_post(connected_ctx, http):
     assert result.status == "success", result.error
     gaps = result.data.missing_for_common_tasks
     assert "chat:write" in gaps, f"inability to post was not reported: {gaps!r}"
+
+
+# --- history written before the date fix must still read cleanly -------------
+
+def test_an_old_row_gets_its_date_rebuilt_from_the_timestamp():
+    """Rows stored in the old date format must not stay redacted forever.
+
+    FOUND LIVE. Messages journalled before the fix hold posted_at as
+    "2026-07-27 18:28"; the platform's PII guard reads that leading digit run
+    as a phone number and the value reaches chat as "<PHONE>:28". Reading the
+    field back verbatim would leave every historical message timeless, so the
+    date is re-derived from ts — which is stored anyway and is the real source
+    of truth.
+    """
+    import handlers_journal as hj
+
+    entity = hj._to_entity({
+        "text_readable": "биг бадабумба",
+        "user_display_name": "Vladislav Ivanco",
+        "channel_name": "random",
+        "message_ts": "1785176897.496389",
+        "posted_at": "2026-07-27 18:28",          # the old, redactable shape
+    })
+
+    assert entity.posted_at == "27 июл 2026, 18:28"
+    assert "2026-07-27" not in (entity.subtitle or "")
+
+
+def test_a_row_with_an_unreadable_ts_keeps_whatever_date_it_had():
+    """Falling back beats showing nothing.
+
+    If ts cannot be parsed there is no better source, and blanking the date
+    would lose information the row already carries.
+    """
+    import handlers_journal as hj
+
+    entity = hj._to_entity({
+        "text_readable": "привет",
+        "message_ts": "not-a-ts",
+        "posted_at": "когда-то давно",
+    })
+
+    assert entity.posted_at == "когда-то давно"
+
+
+def test_the_raw_timestamp_is_never_reformatted():
+    """ts is identity, not decoration: replies depend on it byte for byte."""
+    import handlers_journal as hj
+
+    raw = "1785176897.496389"
+    entity = hj._to_entity({
+        "text_readable": "привет",
+        "message_ts": raw,
+        "reply_thread_ts": raw,
+        "thread_ts": raw,
+    })
+
+    assert entity.ts == raw
+    assert entity.reply_thread_ts == raw
+    assert entity.thread_ts == raw
