@@ -873,13 +873,25 @@ async def set_mode(ctx, params: AppModeParams) -> ActionResult:
         # the same failure of nerve as hiding an increase, and would make this
         # line read as scaremongering rather than information.
         movement = sweeptimer.compare(before, state)
-        if movement["direction"] == "up":
+
+        # THE ZERO CASE IS THE COMMON ONE, and it has no multiplier: coming from
+        # on-demand there were no automatic passes to multiply. It gets its own
+        # sentence because the template that says "в N раз дороже" produced
+        # "Это  дороже" here -- a hole exactly where the warning matters most,
+        # on the switch that STARTS automatic spending.
+        if movement["direction"] == "up" and not movement["factor_text"]:
+            summary += (f" ⚠️ Раньше автоматических трат не было — теперь это "
+                        f"~{sweeptimer.passes_text(state['projected_passes'])} "
+                        f"в месяц.")
+        elif movement["direction"] == "up":
             summary += (f" ⚠️ Это {movement['factor_text']} дороже, чем было "
                         f"({before['mode_text']}, "
-                        f"~{before['projected_passes']} проходов).")
-        elif movement["direction"] == "down":
+                        f"~{sweeptimer.passes_text(before['projected_passes'])}"
+                        f").")
+        elif movement["direction"] == "down" and movement["factor_text"]:
             summary += (f" Это {movement['factor_text']} дешевле, чем было "
-                        f"(~{before['projected_passes']} проходов).")
+                        f"(~{sweeptimer.passes_text(before['projected_passes'])}"
+                        f").")
 
         # And a cheaper alternative, so the figure reads as a choice rather than
         # a fact of life.

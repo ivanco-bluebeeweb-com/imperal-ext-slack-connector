@@ -283,3 +283,47 @@ async def test_the_status_shows_the_ladder_with_the_current_rung_marked(ctx):
     # The cheap end and the expensive end both visible.
     assert "8640" in text and "30" in text
     assert "сейчас" in text, "текущий интервал не отмечен в лестнице"
+
+
+# --- the sentence itself, not just the numbers behind it ---------------------
+
+async def test_starting_automatic_spending_warns_without_a_hole(ctx):
+    """THE BUG THIS TEST EXISTS FOR, caught live and not by the suite.
+
+    Going on-demand -> monitor is the switch that STARTS automatic spending, so
+    it is the one that most needs a warning. It also has no multiplier: there
+    were zero automatic passes to multiply. The template printed the empty
+    factor anyway and produced "Это  дороже" -- a hole precisely where the
+    warning matters most.
+
+    The earlier tests all checked compare()'s DATA, which was correct the whole
+    time. Nothing checked the SENTENCE, so nothing noticed. This asserts the
+    text a person actually reads.
+    """
+    await hj.set_mode(ctx, AppModeParams(mode="on_demand"))
+
+    result = await hj.set_mode(ctx, AppModeParams(mode="monitor", minutes=30))
+    summary = result.summary
+
+    # No empty slot where a number belongs, in any of its forms.
+    assert "Это  дороже" not in summary
+    assert "в  раз" not in summary
+    assert "  " not in summary.replace("\n", " "), f"двойной пробел: {summary!r}"
+
+    # And it still warns, in words, with the real figure.
+    assert "⚠️" in summary
+    assert "1440" in summary
+
+
+async def test_no_warning_claims_a_change_that_did_not_happen(ctx):
+    """Re-picking the same mode must not announce a cost movement.
+
+    "Это в 1 раз дороже" is noise that trains the user to ignore the warning --
+    which is worse than silence, because the warning is the whole feature.
+    """
+    await hj.set_mode(ctx, AppModeParams(mode="monitor", minutes=30))
+
+    result = await hj.set_mode(ctx, AppModeParams(mode="monitor", minutes=30))
+
+    assert "дороже" not in result.summary
+    assert "дешевле" not in result.summary
