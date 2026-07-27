@@ -617,6 +617,7 @@ async def set_autoreply(ctx, params: AutoReplyParams) -> ActionResult:
             enabled=params.enabled, waiting=waiting,
             schedule=journal.SWEEP_CRON,
             max_per_pass=autoreply.MAX_REPLIES_PER_RUN,
+            changed_at=(await autoreply.describe(ctx))["changed_at"],
             note=params.note, detail=detail))
 
 
@@ -629,7 +630,8 @@ async def set_autoreply(ctx, params: AutoReplyParams) -> ActionResult:
 )
 async def autoreply_status(ctx, params: AutoReplyStatusParams) -> ActionResult:
     """State of automatic answering, and what it would do next."""
-    enabled = await autoreply.is_enabled(ctx)
+    state = await autoreply.describe(ctx)
+    enabled = state["enabled"]
     waiting_rows = await autoreply.pending(ctx)
     waiting = len(waiting_rows)
 
@@ -653,4 +655,5 @@ async def autoreply_status(ctx, params: AutoReplyStatusParams) -> ActionResult:
             enabled=enabled, waiting=waiting,
             schedule=journal.SWEEP_CRON,
             max_per_pass=autoreply.MAX_REPLIES_PER_RUN,
+            changed_at=state["changed_at"], note=state["note"],
             detail=detail))

@@ -232,3 +232,33 @@ class _FakeAI:
             text = self._text
             content = self._text
         return _Result()
+
+
+# --- the switch, reported honestly -------------------------------------------
+
+async def test_the_switch_reports_when_it_was_flipped_and_why(ctx):
+    """"On" without a date cannot be checked against anyone's memory.
+
+    This was live and silently empty: the moment was being STORED and never
+    read back, so the report said "enabled" and left "since when" blank. The
+    question a status report exists to answer is exactly the one it dropped.
+    """
+    await autoreply.set_enabled(ctx, True, note="включено Владиславом")
+
+    state = await autoreply.describe(ctx)
+
+    assert state["enabled"] is True
+    assert state["note"] == "включено Владиславом"
+    assert state["changed_at"], "не видно, когда переключили"
+    # Words, not a bare epoch float: a human has to be able to read it.
+    assert not state["changed_at"].replace(".", "").isdigit(), (
+        f"время показано как число: {state['changed_at']!r}")
+
+
+async def test_a_switch_never_touched_reports_no_date(ctx):
+    """No invented history: untouched means empty, not "now"."""
+    state = await autoreply.describe(ctx)
+
+    assert state["enabled"] is False
+    assert state["changed_at"] == ""
+    assert state["note"] == ""

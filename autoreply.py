@@ -126,6 +126,28 @@ async def is_enabled(ctx) -> bool:
     return bool(data.get("enabled"))
 
 
+async def describe(ctx) -> dict:
+    """The switch WITH its context: when it was flipped and why.
+
+    Separate from is_enabled() because the two answer different questions and
+    have different failure rules. is_enabled() must fail towards OFF and return
+    a plain bool -- it guards whether messages get sent. This one is for
+    reporting, where "on since when, and who said so" is the useful answer:
+    "enabled: true" with no date cannot be checked against anyone's memory.
+    """
+    doc = await _settings_doc(ctx)
+    data = (getattr(doc, "data", None) or {}) if doc is not None else {}
+    changed = data.get("changed_at")
+    return {
+        "enabled": bool(data.get("enabled")),
+        # Stored as a number, shown as words: a bare epoch float in a status
+        # report is not something a human can read, and the humanizer is the
+        # same one the journal uses so the two never disagree.
+        "changed_at": so.humanize_ts(str(changed)) if changed else "",
+        "note": str(data.get("note") or ""),
+    }
+
+
 async def set_enabled(ctx, enabled: bool, *, note: str = "") -> bool:
     """Turn auto-reply on or off. Returns whether the WRITE SUCCEEDED.
 
