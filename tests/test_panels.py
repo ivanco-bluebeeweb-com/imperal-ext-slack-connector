@@ -243,8 +243,9 @@ async def test_the_events_view_warns_when_the_signing_secret_is_missing(
         connected_ctx, http):
     from conftest import auth_test_payload
     http.push(auth_test_payload(team="Acme"))
-    dump = _dump(await panels.slack_center(connected_ctx, view="events"))
-    assert "warning" in dump.lower()
+    tree = await panels.slack_center(connected_ctx, view="events")
+    alerts = [n for n in _flatten(tree) if n.type == "Alert"]
+    assert any(a.props.get("variant") == "warn" for a in alerts)
 
 
 async def test_the_events_view_never_shows_the_signing_secret_back(ctx, http):
