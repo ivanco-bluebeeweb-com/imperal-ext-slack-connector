@@ -335,3 +335,38 @@ async def test_happy_set_autoreply_off_then_status_reflects_it(connected_ctx, ht
 
     status = await hj.autoreply_status(connected_ctx, hj.AutoReplyStatusParams())
     assert status.status == "success", status.error
+
+
+# ── Part D2 (SCENARIO_TESTING_STANDARD.md): idempotency / double-invocation ─
+
+async def test_d2_double_delete_message_second_call_fails_clean(connected_ctx, http):
+    """Slack's own chat.delete errors on a message already deleted (Slack
+    has no local existence check of its own -- the API call itself is the
+    check). A retried delete_message must surface that as a clean error,
+    never crash or report a confusing second successful deletion."""
+    http.push(auth_test_payload())
+    http.push(ok(channels=[channel_payload(channel_id="C1", name="general")]))
+    http.push(ok())
+    first = await hp.delete_message(connected_ctx, hp.DeleteMessageParams(
+        channel="general", ts="1690000000.123456"))
+    assert first.status == "success", first.error
+
+    http.push(auth_test_payload())
+    http.push(ok(channels=[channel_payload(channel_id="C1", name="general")]))
+    http.push(err("message_not_found"))
+    second = await hp.delete_message(connected_ctx, hp.DeleteMessageParams(
+        channel="general", ts="1690000000.123456"))
+    assert second.status == "error"
+
+
+# ── Part D3 (SCENARIO_TESTING_STANDARD.md): security / SSRF surface -------
+
+def test_d3_no_ssrf_all_calls_target_fixed_slack_api_host():
+    """No @chat.function accepts a raw URL that gets fetched as this app's
+    own request target. connect_events's endpoint_url field is Slack's OWN
+    computed callback address (shown to the user to paste into Slack's App
+    settings) -- output data, never something this app dereferences. Every
+    outbound call in slack_client.py goes through the fixed SLACK_API
+    constant. Regression trip-wire on that constant."""
+    import slack_client as sc
+    assert sc.SLACK_API == "https://slack.com/api"
