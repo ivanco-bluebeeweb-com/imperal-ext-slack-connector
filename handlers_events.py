@@ -85,7 +85,7 @@ async def fetch_message(ctx, params: FetchMessageParams) -> ActionResult:
         return _error(
             f"No message at {ts} in {shared.channel_label(channel)}. It may "
             "have been deleted, or the ts may belong to another channel.",
-            sc.SLACK_NOT_FOUND)
+            sc.SLACK_MESSAGE_NOT_FOUND)
 
     message = messages[0]
     users = await _user_map(ctx, token, [message])
@@ -138,7 +138,7 @@ async def fetch_thread_context(ctx,
     if not records:
         return _error(
             f"No thread at {thread_ts} in {shared.channel_label(channel)}.",
-            sc.SLACK_NOT_FOUND)
+            sc.SLACK_MESSAGE_NOT_FOUND)
 
     return ActionResult.success(
         summary=(f"{len(records)} message(s) in the thread in "
